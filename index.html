@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>安心桃選 入口</title>
+<style>
+:root{--bg:#fff;--fg:#1b2733;--muted:#5b6b7a;--accent:#0b57d0;--line:#d5dde5}
+@media (prefers-color-scheme:dark){:root{--bg:#14181d;--fg:#e6ebf0;--muted:#9aa8b6;--accent:#8ab4f8;--line:#2c343d}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.7 "Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
+main{max-width:640px;margin:0 auto;padding:40px 16px}
+a.btn{display:inline-block;padding:12px 20px;border-radius:8px;background:var(--accent);color:#fff;text-decoration:none;font-weight:600}
+p{color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<h1>安心桃選（教學試用版）</h1>
+<p>本系統為教學模式，卡片為篩檢與教學提示，不是醫囑。請勿輸入可識別病人資料。</p>
+<p><a class="btn" id="go" href="https://script.google.com/macros/s/AKfycbwCsrS8_GuPvtORPb1EtXqBQPALl_ze5f1oZxGDGFtb534WBYUoWBeG8KsMEe9VB_2t/exec">開啟安心桃選</a></p>
+<p>需以已授權之 Google 帳號登入；未授權帳號會看到 Google 的存取拒絕畫面。</p>
+</main>
+<script>
+// ▼ 將下行換成「部署 → 管理部署作業」中網頁應用程式網址（…/exec）
+var EXEC_URL = "https://script.google.com/macros/s/AKfycbwCsrS8_GuPvtORPb1EtXqBQPALl_ze5f1oZxGDGFtb534WBYUoWBeG8KsMEe9VB_2t/exec";
+document.getElementById("go").href = EXEC_URL;
+</script>
+</body>
+</html>
