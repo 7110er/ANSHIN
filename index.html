@@ -2,29 +2,140 @@
 <html lang="zh-Hant-TW">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<title>安心桃選 入口</title>
-<style>
-:root{--bg:#fff;--fg:#1b2733;--muted:#5b6b7a;--accent:#0b57d0;--line:#d5dde5}
-@media (prefers-color-scheme:dark){:root{--bg:#14181d;--fg:#e6ebf0;--muted:#9aa8b6;--accent:#8ab4f8;--line:#2c343d}}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.7 "Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
-main{max-width:640px;margin:0 auto;padding:40px 16px}
-a.btn{display:inline-block;padding:12px 20px;border-radius:8px;background:var(--accent);color:#fff;text-decoration:none;font-weight:600}
-p{color:var(--muted)}
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="description" content="安心桃選：高齡住院病人用藥評估、今日看板與成效儀表板（臨床決策輔助）">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; frame-src https://accounts.google.com/gsi/; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://accounts.google.com/gsi/; img-src 'self' data: https://*.googleusercontent.com">
+<title>安心桃選｜高齡用藥評估</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b4f8a'/%3E%3Cpath d='M16 7c-4 3-7 7-7 11a7 7 0 0 0 14 0c0-4-3-8-7-11z' fill='%23f2a98f'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/app.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script type="module" src="assets/app.js"></script>
 </head>
 <body>
-<main>
-<h1>安心桃選（教學試用版）</h1>
-<p>本系統為教學模式，卡片為篩檢與教學提示，不是醫囑。請勿輸入可識別病人資料。</p>
-<p><a class="btn" id="go" href="https://script.google.com/macros/s/AKfycbwCsrS8_GuPvtORPb1EtXqBQPALl_ze5f1oZxGDGFtb534WBYUoWBeG8KsMEe9VB_2t/exec">開啟安心桃選</a></p>
-<p>需以已授權之 Google 帳號登入；未授權帳號會看到 Google 的存取拒絕畫面。</p>
+<a class="skip" href="#main">跳到主要內容</a>
+<header class="bar" role="banner">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--brand)"/><path d="M16 7c-4 3-7 7-7 11a7 7 0 0 0 14 0c0-4-3-8-7-11z" fill="var(--peach)"/><path d="M16 12v13" stroke="var(--brand)" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <div><div class="brand-name">安心桃選</div><div class="brand-sub" id="hospitalName">高齡住院用藥評估</div></div>
+  </div>
+  <nav class="tabs" id="tabs" aria-label="主要功能" hidden>
+    <button type="button" data-view="board" aria-current="page">今日看板</button>
+    <button type="button" data-view="assess">病人評估</button>
+    <button type="button" data-view="dash">成效儀表板</button>
+    <button type="button" data-view="learn">教學歷程</button>
+  </nav>
+  <div class="who" id="who" hidden>
+    <span class="chip" id="whoRole"></span>
+    <button type="button" class="ghost" id="signOut">登出</button>
+  </div>
+</header>
+<div class="sr-only" aria-live="polite" id="live"></div>
+<main id="main" tabindex="-1">
+  <section id="view-login" class="view login" aria-labelledby="loginTitle">
+    <div class="login-card">
+      <h1 id="loginTitle">高齡住院病人用藥評估</h1>
+      <p class="lead">貼上住院醫囑，系統依院內藥品主檔逐行辨識，再依 Beers 2023、STOPP/START v3 與仿單列出今天要處理的事。</p>
+      <div id="gsiButton" class="gsi"></div>
+      <p class="muted" id="loginMsg" role="status"></p>
+      <ul class="promise">
+        <li>只輸入病人化名；不收姓名、病歷號、身分證、生日。</li>
+        <li>帳號須在院內授權名單內；名單由管理者在控制台試算表設定。</li>
+        <li>結果是臨床決策輔助，處置由主治醫師裁決。</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="view-board" class="view" hidden aria-labelledby="boardTitle">
+    <div class="view-head">
+      <div><h1 id="boardTitle">今日看板</h1><p class="muted" id="boardSub">每位病人一張卡；拖曳或按箭頭移動欄位。</p></div>
+      <form class="inline" id="addForm" autocomplete="off">
+        <label class="field compact"><span>新增病人（化名）</span><input id="addAlias" maxlength="16" required placeholder="例：A床甲"></label>
+        <button type="submit" class="primary">加入待評估</button>
+      </form>
+    </div>
+    <div class="filters" role="group" aria-label="看板篩選">
+      <label class="field compact"><span>單位</span><select id="boardUnit"></select></label>
+      <button type="button" class="ghost" id="boardRefresh">重新整理</button>
+    </div>
+    <div class="board" id="board" aria-live="polite"></div>
+  </section>
+
+  <section id="view-assess" class="view" hidden aria-labelledby="assessTitle">
+    <div class="view-head"><div><h1 id="assessTitle">病人評估</h1><p class="muted">藥師・住院・單一病人</p></div></div>
+    <div class="assess">
+      <form class="panel input-panel" id="assessForm" autocomplete="off" novalidate>
+        <fieldset>
+          <legend>病人</legend>
+          <div class="grid g3">
+            <label class="field"><span>化名 *</span><input id="f_alias" maxlength="16" required placeholder="例：A床甲"></label>
+            <label class="field"><span>單位</span><input id="f_unit" maxlength="30" placeholder="例：9B"></label>
+            <label class="field"><span>住院第幾天</span><input id="f_adm" type="number" inputmode="numeric" min="1" max="365"></label>
+            <label class="field"><span>年齡</span><input id="f_age" type="number" inputmode="numeric" min="18" max="120"></label>
+            <label class="field"><span>性別</span><select id="f_sex"><option value="">未填</option><option value="M">男</option><option value="F">女</option></select></label>
+            <label class="field"><span>體重 kg</span><input id="f_wt" type="number" inputmode="decimal" min="20" max="300" step="0.1"></label>
+            <label class="field"><span>SCr mg/dL</span><input id="f_scr" type="number" inputmode="decimal" min="0.1" max="20" step="0.01"></label>
+            <label class="field"><span>SCr 幾天前</span><input id="f_scr_ago" type="number" inputmode="numeric" min="0" max="365"></label>
+            <label class="check"><input id="f_dialysis" type="checkbox"> 透析中</label>
+          </div>
+        </fieldset>
+        <details class="more">
+          <summary>檢驗、診斷與住院情境（有填才判讀）</summary>
+          <div class="grid g4">
+            <label class="field"><span>K</span><input data-lab="K" type="number" step="0.1"></label>
+            <label class="field"><span>Na</span><input data-lab="Na" type="number" step="1"></label>
+            <label class="field"><span>Mg</span><input data-lab="mg" type="number" step="0.1"></label>
+            <label class="field"><span>Hb</span><input data-lab="Hb" type="number" step="0.1"></label>
+            <label class="field"><span>PLT（千）</span><input data-lab="PLT" type="number" step="1"></label>
+            <label class="field"><span>血糖</span><input data-lab="glu" type="number" step="1"></label>
+            <label class="field"><span>AST</span><input data-lab="AST" type="number" step="1"></label>
+            <label class="field"><span>ALT</span><input data-lab="ALT" type="number" step="1"></label>
+            <label class="field"><span>白蛋白</span><input data-lab="alb" type="number" step="0.1"></label>
+            <label class="field"><span>最低 SBP</span><input data-lab="sbp_min" type="number" step="1"></label>
+            <label class="field"><span>最低 HR</span><input data-lab="hr_min" type="number" step="1"></label>
+            <label class="field"><span>檢驗幾天前</span><input data-lab="lab_days_ago" type="number" step="1"></label>
+          </div>
+          <label class="field"><span>ICD-10（以空白或逗號分隔）</span><input id="f_icd" placeholder="例：I48.91 N18.4"></label>
+          <div class="checks">
+            <label class="check"><input type="checkbox" data-flag="active_bleeding"> 活動性出血</label>
+            <label class="check"><input type="checkbox" data-flag="periop_npo"> 手術日／NPO</label>
+            <label class="check"><input type="checkbox" data-flag="tube_or_dysphagia"> 管灌／吞嚥困難</label>
+          </div>
+        </details>
+        <fieldset>
+          <legend>住院醫囑</legend>
+          <p class="hint">可直接自 HIS 複製貼上；序號、日期、院內碼、數量欄可保留。</p>
+          <label class="sr-only" for="f_orders">住院醫囑（每行一筆）</label><textarea id="f_orders" rows="9" spellcheck="false" aria-describedby="trust"></textarea>
+          <div class="trust" id="trust" aria-live="polite"></div>
+          <div class="actions">
+            <button type="button" id="btnParse">逐行辨識</button>
+            <button type="submit" class="primary" id="btnAnalyze">分析</button>
+            <button type="button" class="ghost" id="btnClear">換病人</button>
+          </div>
+          <p class="msg" id="assessMsg" role="status"></p>
+        </fieldset>
+        <div id="confirm"></div>
+      </form>
+      <div class="result" id="result" aria-live="polite"><div class="empty"><p>貼上醫囑後按「分析」。</p><p class="muted">結果依今日須處理、本次檢視、待補資料與交班排列。</p></div></div>
+    </div>
+  </section>
+
+  <section id="view-dash" class="view" hidden aria-labelledby="dashTitle">
+    <div class="view-head"><div><h1 id="dashTitle">成效儀表板</h1><p class="muted" id="dashSub">伺服器計算；分母小於門檻不顯示數值。</p></div>
+      <div class="filters" role="group" aria-label="儀表板篩選">
+        <label class="field compact"><span>期間</span><select id="dashDays"><option value="7">近 7 天</option><option value="30">近 30 天</option><option value="90" selected>近 90 天</option><option value="365">近 1 年</option></select></label>
+        <label class="field compact"><span>單位</span><select id="dashUnit"></select></label>
+        <button type="button" class="ghost" id="dashHealth" hidden>系統健康檢查</button>
+      </div>
+    </div>
+    <div id="dash"></div>
+  </section>
+
+  <section id="view-learn" class="view" hidden aria-labelledby="learnTitle">
+    <div class="view-head"><div><h1 id="learnTitle">教學歷程</h1><p class="muted">台灣藥師 EPA5（住院病人用藥評估）：學員先作答，再看系統今日卡，教師評核信賴等級。</p></div></div>
+    <div id="learn"></div>
+  </section>
 </main>
-<script>
-// ▼ 將下行換成「部署 → 管理部署作業」中網頁應用程式網址（…/exec）
-var EXEC_URL = "https://script.google.com/macros/s/AKfycbwCsrS8_GuPvtORPb1EtXqBQPALl_ze5f1oZxGDGFtb534WBYUoWBeG8KsMEe9VB_2t/exec";
-document.getElementById("go").href = EXEC_URL;
-</script>
+<footer class="foot"><span>臨床決策輔助；處置由主治醫師裁決。急迫度只分當日、72 小時內、下次門診。</span><span id="ver"></span></footer>
 </body>
 </html>
