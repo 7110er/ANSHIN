@@ -91,7 +91,7 @@ function signOut(msg, fromPeer) {
   try { window.google && window.google.accounts.id.disableAutoSelect(); } catch (e) {}
   $('#tabs').hidden = true; $('#who').hidden = true; $('#sessLeft').hidden = true;
   VIEWS.forEach((v) => { $(`#view-${v}`).hidden = true; });
-  $('#view-login').hidden = false; $('#loginMsg').textContent = msg || '';
+  $('#view-login').hidden = false; $('#loginMsg').textContent = msg || ''; gsiVisible(true);
 }
 // ── 逾時重新登入：覆蓋式對話框，不換頁、不清輸入；登入後自動重送原請求
 function openReauth(msgText) {
@@ -557,13 +557,16 @@ $('#f_orders').addEventListener('input', () => { if (S.parse && S.parse.text !==
 window.addEventListener('hashchange', () => { if (S.me) go(location.hash.replace('#', '')); });
 window.addEventListener('beforeunload', (e) => { if ($('#f_orders').value.trim() && !S.result) { e.preventDefault(); e.returnValue = ''; } });
 
+// v9.3：驗證既有登入期間隱藏 Google 登入鈕，避免誤按而多開一次登入；驗證失敗或登出時再顯示
+function gsiVisible(on) { const b = $('#gsiButton'); if (b) b.style.display = on ? '' : 'none'; }
 (async function boot() {
   const ok = await loadConfig();
   if (!ok) { showSetupError(); return; }
   initGsi();
   let saved = null; try { saved = JSON.parse(store.get('anshin_v9_sess') || 'null'); } catch (e) { saved = null; }
-  if (!sessValid(saved)) saved = await sessAskPeers(700);   // v9.2：本分頁無憑證 → 向其他已登入分頁索取
+  if (!sessValid(saved)) { gsiVisible(false); saved = await sessAskPeers(700); if (!sessValid(saved)) gsiVisible(true); }   // v9.2：本分頁無憑證 → 向其他已登入分頁索取
   if (sessValid(saved)) {
+    gsiVisible(false); $('#loginMsg').textContent = '已登入，載入中…';
     S.session = saved; store.set('anshin_v9_sess', JSON.stringify(saved));
     let r = await api('whoami', {});
     // v9.2：網路中斷、後端冷啟動逾時、暫時忙碌 → 保留憑證並重試；只有後端明確判定無效才清除
@@ -572,12 +575,12 @@ window.addEventListener('beforeunload', (e) => { if ($('#f_orders').value.trim()
       await new Promise((ok) => setTimeout(ok, 3000 * (k + 1)));
       r = await api('whoami', {});
     }
-    if (r.ok) { S.me = r; enterApp(); return; }
+    if (r.ok) { S.me = r; $('#loginMsg').textContent = ''; enterApp(); return; }
     if (TRANSIENT_CODES.includes(r.error_code)) {
       $('#loginMsg').textContent = '暫時無法連線後端；登入仍有效，請稍後重新整理頁面即可續用，不必重新登入。';
       return;
     }
-    S.session = null; store.del('anshin_v9_sess');
+    S.session = null; store.del('anshin_v9_sess'); gsiVisible(true);
     if (restoreDraft()) $('#loginMsg').textContent = '登入已逾時；重新登入後會還原剛才的輸入。';
     else if (!/^(SESSION_|TOKEN_)/.test(r.error_code || '') && r.error_zh) $('#loginMsg').textContent = r.error_zh;
   } else if (store.get(DRAFT_KEY)) { $('#loginMsg').textContent = '重新登入後會還原剛才的輸入。'; }
