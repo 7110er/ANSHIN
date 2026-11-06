@@ -1,5 +1,6 @@
 // 安心桃選 v9｜GitHub Pages 前端（無建置工具；原生 ES 模組）
-// 身分：Google Identity Services → ID token 只用一次換發後端會話憑證（v9.1，滑動續期）；憑證與表單草稿只存在本分頁（sessionStorage，關分頁即清）。
+// 身分：Google Identity Services → ID token 只用一次換發後端會話憑證（v9.1，滑動續期）；憑證與表單草稿存在 sessionStorage（全部分頁關閉即清）。
+// v9.2：同網站其他分頁仍登入中時，新分頁經 BroadcastChannel 取得同一會話憑證，免重登；任一分頁按「登出」即全部分頁登出；開頁時後端暫時連不上不再清除有效憑證。
 import { FIELD_ZH } from './labels.js';
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
@@ -7,6 +8,34 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 const live = (t) => { const el = $('#live'); el.textContent = ''; setTimeout(() => { el.textContent = t; }, 30); };
 const store = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }, del(k) { try { sessionStorage.removeItem(k); } catch (e) {} } };
 const S = { cfg: null, token: null, session: null, me: null, reauth: null, view: 'board', parse: null, result: null, board: null, draft: {} };
+// ── v9.2 分頁間共享會話憑證（只在同一瀏覽器、同網站、且至少一個已登入分頁仍開著時生效）
+const SESS_CH = (() => { try { return new BroadcastChannel('anshin_v9_sess_share'); } catch (e) { return null; } })();
+const TRANSIENT_CODES = ['NETWORK', 'TIMEOUT', 'SERVER_ERROR', 'BUSY', 'RATE_LIMIT'];
+const sessValid = (s) => !!(s && typeof s.token === 'string' && s.token && s.expires_at > Date.now());
+const sessSub = (tok) => { try { const p = String(tok || '').split('.')[0].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(atob(p + '==='.slice((p.length + 3) % 4))).s || null; } catch (e) { return null; } };
+function sessBroadcast(type, sess) { try { if (SESS_CH) SESS_CH.postMessage({ type, sess: sess || null }); } catch (e) {} }
+function sessAskPeers(ms) {
+  return new Promise((resolve) => {
+    if (!SESS_CH) { resolve(null); return; }
+    let done = false;
+    const on = (ev) => { const d = ev.data || {}; if (d.type === 'give' && sessValid(d.sess)) fin(d.sess); };
+    const fin = (v) => { if (done) return; done = true; SESS_CH.removeEventListener('message', on); resolve(v); };
+    SESS_CH.addEventListener('message', on);
+    sessBroadcast('ask');
+    setTimeout(() => fin(null), ms || 700);
+  });
+}
+if (SESS_CH) SESS_CH.addEventListener('message', (ev) => {
+  const d = ev.data || {};
+  if (d.type === 'ask') { if (S.me && sessValid(S.session)) sessBroadcast('give', S.session); return; }
+  if (d.type === 'renew') {   // 他分頁續期：同一帳號且到期較晚才採用
+    if (S.me && sessValid(d.sess) && S.session && sessSub(d.sess.token) && sessSub(d.sess.token) === sessSub(S.session.token) && d.sess.expires_at > S.session.expires_at) {
+      S.session = d.sess; store.set('anshin_v9_sess', JSON.stringify(d.sess)); sessTick();
+    }
+    return;
+  }
+  if (d.type === 'signout' && S.me) signOut('已於其他分頁登出。', true);
+});
 const VIEWS = ['board', 'assess', 'dash', 'learn'];
 const ROC7 = /^1\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/;
 function phiScan(text) {
@@ -54,8 +83,10 @@ async function onCredential(tok) {
 function setSession(sess) {
   if (!sess || !sess.token) return;
   S.session = sess; store.set('anshin_v9_sess', JSON.stringify(sess)); sessTick();
+  sessBroadcast('renew', sess);
 }
-function signOut(msg) {
+function signOut(msg, fromPeer) {
+  if (!fromPeer) sessBroadcast('signout');
   S.token = null; S.session = null; S.me = null; store.del('anshin_v9_sess'); clearDraft();
   try { window.google && window.google.accounts.id.disableAutoSelect(); } catch (e) {}
   $('#tabs').hidden = true; $('#who').hidden = true; $('#sessLeft').hidden = true;
@@ -531,10 +562,23 @@ window.addEventListener('beforeunload', (e) => { if ($('#f_orders').value.trim()
   if (!ok) { showSetupError(); return; }
   initGsi();
   let saved = null; try { saved = JSON.parse(store.get('anshin_v9_sess') || 'null'); } catch (e) { saved = null; }
-  if (saved && saved.token && saved.expires_at > Date.now()) {
-    S.session = saved; const r = await api('whoami', {});
+  if (!sessValid(saved)) saved = await sessAskPeers(700);   // v9.2：本分頁無憑證 → 向其他已登入分頁索取
+  if (sessValid(saved)) {
+    S.session = saved; store.set('anshin_v9_sess', JSON.stringify(saved));
+    let r = await api('whoami', {});
+    // v9.2：網路中斷、後端冷啟動逾時、暫時忙碌 → 保留憑證並重試；只有後端明確判定無效才清除
+    for (let k = 0; k < 2 && !r.ok && TRANSIENT_CODES.includes(r.error_code); k++) {
+      $('#loginMsg').textContent = '正在連線後端…（登入仍有效）';
+      await new Promise((ok) => setTimeout(ok, 3000 * (k + 1)));
+      r = await api('whoami', {});
+    }
     if (r.ok) { S.me = r; enterApp(); return; }
+    if (TRANSIENT_CODES.includes(r.error_code)) {
+      $('#loginMsg').textContent = '暫時無法連線後端；登入仍有效，請稍後重新整理頁面即可續用，不必重新登入。';
+      return;
+    }
     S.session = null; store.del('anshin_v9_sess');
     if (restoreDraft()) $('#loginMsg').textContent = '登入已逾時；重新登入後會還原剛才的輸入。';
+    else if (!/^(SESSION_|TOKEN_)/.test(r.error_code || '') && r.error_zh) $('#loginMsg').textContent = r.error_zh;
   } else if (store.get(DRAFT_KEY)) { $('#loginMsg').textContent = '重新登入後會還原剛才的輸入。'; }
 })();
