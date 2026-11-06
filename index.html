@@ -26,6 +26,7 @@
     <button type="button" data-view="learn">教學歷程</button>
   </nav>
   <div class="who" id="who" hidden>
+    <span class="sess-left" id="sessLeft" hidden><span id="sessLeftTxt"></span><button type="button" class="ghost" id="sessExtend">延長</button></span>
     <span class="chip" id="whoRole"></span>
     <button type="button" class="ghost" id="signOut">登出</button>
   </div>
@@ -114,7 +115,7 @@
           </div>
           <p class="msg" id="assessMsg" role="status"></p>
         </fieldset>
-        <div id="confirm"></div>
+        <details id="confirmWrap" class="confirm-wrap" hidden open><summary id="confirmSum">逐行確認表</summary><div id="confirm"></div></details>
       </form>
       <div class="result" id="result" aria-live="polite"><div class="empty"><p>貼上醫囑後按「分析」。</p><p class="muted">結果依今日須處理、本次檢視、待補資料與交班排列。</p></div></div>
     </div>
@@ -136,6 +137,13 @@
     <div id="learn"></div>
   </section>
 </main>
+<dialog id="reauth" class="reauth" aria-labelledby="reauthTitle">
+  <h2 id="reauthTitle">請重新登入</h2>
+  <p id="reauthMsg">登入已逾時。</p>
+  <p class="muted">畫面上的輸入都已保留；登入後會自動繼續剛才的操作。換成其他帳號登入時，前一位的輸入會清除。</p>
+  <div id="reauthGsi"></div>
+  <div class="reauth-actions"><button type="button" class="ghost" id="reauthCancel">稍後再登入</button></div>
+</dialog>
 <footer class="foot"><span>臨床決策輔助；處置由主治醫師裁決。急迫度只分當日、72 小時內、下次門診。</span><span id="ver"></span></footer>
 </body>
 </html>
