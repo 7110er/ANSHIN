@@ -233,3 +233,13 @@ figure { margin: 0; }
   .kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
   .kpi .spark { display: none; }
 }
+
+/* v9.1：逾時重新登入對話框、會話剩餘時間、確認表收合 */
+.reauth { border: 1px solid var(--line); border-radius: var(--r); padding: 24px; max-width: 440px; width: calc(100% - 32px); box-shadow: 0 12px 40px rgba(16,32,56,.25); }
+.reauth::backdrop { background: rgba(16,32,56,.45); }
+.reauth h2 { margin: 0 0 8px; font-size: 20px; }
+.reauth #reauthGsi { margin: 16px 0; min-height: 48px; }
+.reauth-actions { display: flex; justify-content: flex-end; }
+.sess-left { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: #8a3b00; background: #fff4e5; border: 1px solid #f3c58a; border-radius: 999px; padding: 2px 4px 2px 12px; }
+.confirm-wrap { margin-top: 12px; }
+.confirm-wrap > summary { cursor: pointer; min-height: 48px; display: flex; align-items: center; font-weight: 600; color: var(--ink, #1f2933); }

@@ -1,12 +1,12 @@
 // 安心桃選 v9｜GitHub Pages 前端（無建置工具；原生 ES 模組）
-// 身分：Google Identity Services → ID token → 後端 Apps Script 驗證。前端不存病人資料；token 只存在本分頁（sessionStorage）。
+// 身分：Google Identity Services → ID token 只用一次換發後端會話憑證（v9.1，滑動續期）；憑證與表單草稿只存在本分頁（sessionStorage，關分頁即清）。
 import { FIELD_ZH } from './labels.js';
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const live = (t) => { const el = $('#live'); el.textContent = ''; setTimeout(() => { el.textContent = t; }, 30); };
 const store = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }, del(k) { try { sessionStorage.removeItem(k); } catch (e) {} } };
-const S = { cfg: null, token: null, me: null, view: 'board', parse: null, result: null, board: null, draft: {} };
+const S = { cfg: null, token: null, session: null, me: null, reauth: null, view: 'board', parse: null, result: null, board: null, draft: {} };
 const VIEWS = ['board', 'assess', 'dash', 'learn'];
 const ROC7 = /^1\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/;
 function phiScan(text) {
@@ -36,28 +36,101 @@ function initGsi(tries = 0) {
   g.renderButton($('#gsiButton'), { theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', locale: 'zh-TW', width: 280 });
 }
 async function onCredential(tok) {
-  S.token = tok; store.set('anshin_v9_tok', tok);
-  $('#loginMsg').textContent = '驗證中…';
-  const r = await api('whoami', {});
-  if (!r.ok) { $('#loginMsg').textContent = r.error_zh || '登入失敗'; S.token = null; store.del('anshin_v9_tok'); return; }
+  S.token = tok;
+  const prevPid = S.me && S.me.person_id;
+  if (!S.reauth) $('#loginMsg').textContent = '驗證中…';
+  const r = await api('session_open', {});
+  S.token = null;   // ID token 不保存；之後只用會話憑證
+  if (!r.ok) {
+    if (S.reauth) { $('#reauthMsg').textContent = r.error_zh || '登入失敗'; return; }
+    $('#loginMsg').textContent = r.error_zh || '登入失敗'; return;
+  }
+  if (S.reauth) {
+    if (prevPid && r.person_id !== prevPid) { closeReauth(false); clearDraft(); S.me = r; enterApp(); live('已切換帳號；前一位使用者的輸入已清除。'); return; }
+    S.me = r; closeReauth(true); return;
+  }
   S.me = r; enterApp();
 }
+function setSession(sess) {
+  if (!sess || !sess.token) return;
+  S.session = sess; store.set('anshin_v9_sess', JSON.stringify(sess)); sessTick();
+}
 function signOut(msg) {
-  S.token = null; S.me = null; store.del('anshin_v9_tok');
+  S.token = null; S.session = null; S.me = null; store.del('anshin_v9_sess'); clearDraft();
   try { window.google && window.google.accounts.id.disableAutoSelect(); } catch (e) {}
-  $('#tabs').hidden = true; $('#who').hidden = true;
+  $('#tabs').hidden = true; $('#who').hidden = true; $('#sessLeft').hidden = true;
   VIEWS.forEach((v) => { $(`#view-${v}`).hidden = true; });
   $('#view-login').hidden = false; $('#loginMsg').textContent = msg || '';
 }
-async function api(action, payload) {
-  if (!S.cfg) return { ok: false, error_zh: '網站設定未完成' };
-  try {
-    const r = await fetch(S.cfg.api_url, { method: 'POST', body: JSON.stringify({ action, id_token: S.token, payload: payload || {} }), redirect: 'follow' });
-    const j = await r.json();
-    if (!j.ok && /^TOKEN_/.test(j.error_code || '') && action !== 'whoami') signOut(j.error_zh);
-    return j;
-  } catch (e) { return { ok: false, error_code: 'NETWORK', error_zh: '無法連線到後端；請確認網路或稍後重試' }; }
+// ── 逾時重新登入：覆蓋式對話框，不換頁、不清輸入；登入後自動重送原請求
+function openReauth(msgText) {
+  if (S.reauth) return S.reauth.promise;
+  let resolve; const promise = new Promise((r) => { resolve = r; });
+  S.reauth = { promise, resolve };
+  const d = $('#reauth'); $('#reauthMsg').textContent = /SESSION_|TOKEN_/.test(String(msgText || '')) ? '登入已逾時。' : '登入已逾時（約定之登入時數已到）。';
+  try { window.google.accounts.id.renderButton($('#reauthGsi'), { theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'rectangular', locale: 'zh-TW', width: 280 }); } catch (e) { $('#reauthMsg').textContent += '（無法載入 Google 登入元件，請確認網路）'; }
+  if (d.showModal) { try { d.showModal(); } catch (e) { d.setAttribute('open', ''); } } else d.setAttribute('open', '');
+  live('登入已逾時；請重新登入，輸入已保留。');
+  return promise;
 }
+function closeReauth(ok) {
+  const d = $('#reauth'); try { d.close(); } catch (e) { d.removeAttribute('open'); }
+  const r = S.reauth; S.reauth = null; if (r) r.resolve(ok);
+  if (ok) live('已重新登入，繼續剛才的操作。');
+}
+const TIMEOUT_S = Object.assign({ analyze: 340, parse: 90, dashboard: 90 }, window.__ANSHIN_TIMEOUT_OVERRIDE__ || {});   // 覆寫只供端對端測試
+const RETRY_SAFE = ['whoami', 'kanban_list', 'dashboard', 'my_learning', 'teach_queue', 'parse'];
+async function api(action, payload, _retried) {
+  if (!S.cfg) return { ok: false, error_zh: '網站設定未完成' };
+  const body = { action, payload: payload || {} };
+  if (action === 'session_open' || !S.session) body.id_token = S.token; else body.session = S.session.token;
+  const sec = TIMEOUT_S[action] || 45, ac = new AbortController(), to = setTimeout(() => ac.abort(), sec * 1000);
+  let j;
+  try {
+    const r = await fetch(S.cfg.api_url, { method: 'POST', body: JSON.stringify(body), redirect: 'follow', signal: ac.signal });
+    j = await r.json();
+  } catch (e) {
+    clearTimeout(to);
+    if (!_retried && RETRY_SAFE.includes(action)) return api(action, payload, true);
+    return e && e.name === 'AbortError'
+      ? { ok: false, error_code: 'TIMEOUT', error_zh: `伺服器超過 ${sec} 秒未回應；輸入已保留，請再試一次。` }
+      : { ok: false, error_code: 'NETWORK', error_zh: '無法連線到後端；輸入已保留，請確認網路後再試。' };
+  }
+  clearTimeout(to);
+  if (j && j.session) setSession(j.session);
+  if (j && !j.ok && action !== 'session_open' && /^(SESSION_|TOKEN_)/.test(j.error_code || '') && S.me && !_retried) {
+    S.session = null; store.del('anshin_v9_sess');
+    const ok = await openReauth(j.error_zh);
+    return ok ? api(action, payload, true) : { ok: false, error_code: 'REAUTH_CANCELLED', error_zh: '未重新登入；輸入已保留。' };
+  }
+  return j;
+}
+// ── 會話剩餘時間：剩 15 分鐘內於頂列顯示並可延長（任一請求在剩 30 分鐘內都會自動續期）
+let _sessTimer = null;
+function sessTick() {
+  clearInterval(_sessTimer);
+  const upd = () => {
+    const el = $('#sessLeft'); if (!S.session || !S.me) { el.hidden = true; return; }
+    const m = Math.floor((S.session.expires_at - Date.now()) / 60000);
+    if (m > 15) { el.hidden = true; return; }
+    el.hidden = false; $('#sessLeftTxt').textContent = m > 0 ? `登入剩 ${m} 分鐘` : '登入已到期';
+  };
+  upd(); _sessTimer = setInterval(upd, 30000);
+}
+// ── 表單草稿（只存本分頁；化名、單位、檢驗、醫囑文字；關分頁即清）
+const DRAFT_KEY = 'anshin_v9_draft';
+const draftKey = (el) => el.id || (el.dataset.lab ? 'lab:' + el.dataset.lab : (el.dataset.flag ? 'flag:' + el.dataset.flag : ''));
+function saveDraft() {
+  const d = {}; $$('#assessForm input, #assessForm select, #assessForm textarea').forEach((el) => { const k = draftKey(el); if (!k) return; d[k] = el.type === 'checkbox' ? el.checked : el.value; });
+  store.set(DRAFT_KEY, JSON.stringify(d));
+}
+function restoreDraft() {
+  let d = null; try { d = JSON.parse(store.get(DRAFT_KEY) || 'null'); } catch (e) { d = null; }
+  if (!d) return false;
+  $$('#assessForm input, #assessForm select, #assessForm textarea').forEach((el) => { const k = draftKey(el); if (!k || !(k in d)) return; if (el.type === 'checkbox') el.checked = !!d[k]; else el.value = d[k]; });
+  return true;
+}
+function clearDraft() { store.del(DRAFT_KEY); }
 function enterApp() {
   const m = S.me;
   $('#view-login').hidden = true; $('#tabs').hidden = false; $('#who').hidden = false;
@@ -69,7 +142,10 @@ function enterApp() {
   const units = ['__all__'].concat(m.units || []);
   ['#boardUnit', '#dashUnit'].forEach((id) => { $(id).innerHTML = units.map((u) => `<option value="${esc(u)}"${u === (m.unit || '__all__') ? ' selected' : ''}>${u === '__all__' ? '全部單位' : esc(u)}</option>`).join(''); });
   if (m.unit && !(m.units || []).includes(m.unit)) { ['#boardUnit', '#dashUnit'].forEach((id) => { $(id).insertAdjacentHTML('beforeend', `<option value="${esc(m.unit)}" selected>${esc(m.unit)}</option>`); }); }
-  go(location.hash.replace('#', '') || 'board');
+  const restored = restoreDraft();
+  go(restored && $('#f_orders').value.trim() ? 'assess' : (location.hash.replace('#', '') || 'board'));
+  if (restored && $('#f_orders').value.trim()) live('已還原本分頁先前的輸入。');
+  sessTick();
 }
 function go(v) {
   if (!VIEWS.includes(v)) v = 'board';
@@ -190,6 +266,7 @@ function renderConfirm(r) {
         ${rs.length ? `<div class="cf-sub">${esc(rs.join('；'))}</div>` : ''}${act ? `<div class="row-actions">${act}</div>` : ''}</td></tr>`;
   };
   const c = r.counts;
+  $('#confirmWrap').hidden = false; $('#confirmWrap').open = true; $('#confirmSum').textContent = '逐行確認表';
   $('#confirm').innerHTML = `<div class="tbl-wrap"><table><caption>逐行確認：${c.lines} 行；已辨識 ${c.resolved}、未評估 ${c.unevaluated}、非藥品 ${c.non_med}</caption>
     <thead><tr><th scope="col" style="width:110px">狀態</th><th scope="col">原始醫囑 → 辨識結果｜每日劑量｜原因</th></tr></thead>
     <tbody>${rows.map(tr).join('')}</tbody></table></div>`;
@@ -213,6 +290,10 @@ async function analyze(e) {
   if (!r.ok) { msg(r.error_zh, true); return; }
   S.result = r; msg(`完成：今日須處理 ${r.today.length} 項${r.unevaluated.n ? `；未評估 ${r.unevaluated.n} 行` : ''}。`);
   renderResult();
+  // F83：完成即見結果——收合逐行確認表，捲至結果並移焦點
+  const cf = $('#confirmWrap'); if (cf && S.parse) { cf.open = false; $('#confirmSum').textContent = `逐行確認表（${S.parse.rows.length} 行；已辨識 ${S.parse.counts.resolved}）`; }
+  const rs = $('#result'); rs.setAttribute('tabindex', '-1');
+  rs.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); rs.focus({ preventScroll: true });
 }
 const FACT_ZH = { aki: '急性腎損傷判定（需 SCr 基線與時間）', sbp_lt_100: '近日最低收縮壓', hr_lt_50: '近日最低心跳', ecg_qtc: '近期 ECG QTc' };
 const ROUTE_CODE_ZH = { oral: '口服', intravenous: '靜脈', intramuscular: '肌肉', subcutaneous: '皮下', inhalation: '吸入', topical: '外用', sublingual: '舌下', rectal: '肛門', enteral_tube: '管灌', transdermal: '貼片', ophthalmic: '眼用' };
@@ -400,12 +481,14 @@ document.addEventListener('click', async (e) => {
   const t = e.target.closest('button'); if (!t) return;
   if (t.closest('#tabs')) { go(t.dataset.view); return; }
   if (t.id === 'signOut') { signOut('已登出。'); return; }
+  if (t.id === 'sessExtend') { api('whoami', {}).then((r) => { if (r.ok) live('已延長登入。'); }); return; }
+  if (t.id === 'reauthCancel') { closeReauth(false); return; }
   if (t.id === 'boardRefresh') { loadBoard(); return; }
   if (t.dataset.move) { move(t.closest('.kcard').dataset.key, t.dataset.move); return; }
   if (t.dataset.out) { move(t.closest('.kcard').dataset.key, 'replied', t.dataset.out); return; }
   if (t.dataset.open != null) { $('#f_alias').value = t.dataset.open; go('assess'); $('#f_orders').focus(); return; }
   if (t.id === 'btnParse') { parse(); return; }
-  if (t.id === 'btnClear') { $('#assessForm').reset(); $('#confirm').innerHTML = ''; $('#trust').innerHTML = ''; S.parse = null; S.result = null; $('#result').innerHTML = '<div class="empty"><p>貼上醫囑後按「分析」。</p></div>'; msg(''); $('#f_alias').focus(); return; }
+  if (t.id === 'btnClear') { clearDraft(); $('#assessForm').reset(); $('#confirm').innerHTML = ''; $('#confirmWrap').hidden = true; $('#trust').innerHTML = ''; S.parse = null; S.result = null; $('#result').innerHTML = '<div class="empty"><p>貼上醫囑後按「分析」。</p></div>'; msg(''); $('#f_alias').focus(); return; }
   if (t.dataset.pick) { const [k, ci] = t.dataset.pick.split(':').map(Number); const c = S.parse.rows[k].candidates[ci]; replaceLine(k, c.pick_line); return; }
   if (t.dataset.bfgo != null) { const k = +t.dataset.bfgo, inp = $(`[data-bf="${k}"]`), ing = (inp.value || '').trim(); if (!ing) { inp.focus(); return; } const x = S.parse.rows[k]; replaceLine(k, `${ing} [藥師補登:${String(x.backfill.original_name || '').replace(/[[\]]/g, '')}] ${x.backfill.rest || ''}`.trim()); return; }
   if (t.dataset.fb) {
@@ -437,6 +520,8 @@ $('#addForm').addEventListener('submit', async (e) => {
 });
 ['#boardUnit'].forEach((id) => $(id).addEventListener('change', loadBoard));
 ['#dashDays', '#dashUnit'].forEach((id) => $(id).addEventListener('change', loadDash));
+let _dT = null; $('#assessForm').addEventListener('input', () => { clearTimeout(_dT); _dT = setTimeout(saveDraft, 400); });
+$('#assessForm').addEventListener('change', saveDraft);
 $('#f_orders').addEventListener('input', () => { if (S.parse && S.parse.text !== linesOf().join('\n')) { $('#trust').innerHTML = ''; } });
 window.addEventListener('hashchange', () => { if (S.me) go(location.hash.replace('#', '')); });
 window.addEventListener('beforeunload', (e) => { if ($('#f_orders').value.trim() && !S.result) { e.preventDefault(); e.returnValue = ''; } });
@@ -445,6 +530,11 @@ window.addEventListener('beforeunload', (e) => { if ($('#f_orders').value.trim()
   const ok = await loadConfig();
   if (!ok) { showSetupError(); return; }
   initGsi();
-  const saved = store.get('anshin_v9_tok');
-  if (saved) { S.token = saved; const r = await api('whoami', {}); if (r.ok) { S.me = r; enterApp(); return; } store.del('anshin_v9_tok'); S.token = null; }
+  let saved = null; try { saved = JSON.parse(store.get('anshin_v9_sess') || 'null'); } catch (e) { saved = null; }
+  if (saved && saved.token && saved.expires_at > Date.now()) {
+    S.session = saved; const r = await api('whoami', {});
+    if (r.ok) { S.me = r; enterApp(); return; }
+    S.session = null; store.del('anshin_v9_sess');
+    if (restoreDraft()) $('#loginMsg').textContent = '登入已逾時；重新登入後會還原剛才的輸入。';
+  } else if (store.get(DRAFT_KEY)) { $('#loginMsg').textContent = '重新登入後會還原剛才的輸入。'; }
 })();
