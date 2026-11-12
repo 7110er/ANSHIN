@@ -31,6 +31,8 @@
     <button type="button" class="ghost" id="signOut">登出</button>
   </div>
 </header>
+<div class="trial-banner" role="note">試用版：規則未經病房真值驗證、未完成雙簽，不得作為唯一臨床依據；處置由主治醫師裁決。</div>
+<div class="attest-bad" id="attestBanner" role="alert" hidden></div>
 <div class="sr-only" aria-live="polite" id="live"></div>
 <main id="main" tabindex="-1">
   <section id="view-login" class="view login" aria-labelledby="loginTitle">
@@ -144,6 +146,6 @@
   <div id="reauthGsi"></div>
   <div class="reauth-actions"><button type="button" class="ghost" id="reauthCancel">稍後再登入</button></div>
 </dialog>
-<footer class="foot"><span>臨床決策輔助；處置由主治醫師裁決。急迫度只分當日、72 小時內、下次門診。</span><span id="ver"></span></footer>
+<footer class="foot"><span>臨床決策輔助；處置由主治醫師裁決。急迫度只分當日、72 小時內、下次門診。</span><span id="ver"></span><span id="build"></span></footer>
 </body>
 </html>
