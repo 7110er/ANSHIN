@@ -7,7 +7,9 @@ const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const live = (t) => { const el = $('#live'); el.textContent = ''; setTimeout(() => { el.textContent = t; }, 30); };
 const store = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }, del(k) { try { sessionStorage.removeItem(k); } catch (e) {} } };
-const S = { cfg: null, token: null, session: null, me: null, reauth: null, view: 'board', parse: null, result: null, board: null, draft: {} };
+// v9.6：前端建置識別＝本檔將此行引號內值換為 64 個 0 後之 SHA-256（build_v96.py 寫入）
+const FRONT_BUILD_ID = '7b6086d51d652e3d891131e4dad170542f0b2a2dd89514c9d2562e2d5fa16f91';
+const S = { attest: null, release: null, cfg: null, token: null, session: null, me: null, reauth: null, view: 'board', parse: null, result: null, board: null, draft: {} };
 // ── v9.2 分頁間共享會話憑證（只在同一瀏覽器、同網站、且至少一個已登入分頁仍開著時生效）
 const SESS_CH = (() => { try { return new BroadcastChannel('anshin_v9_sess_share'); } catch (e) { return null; } })();
 const TRANSIENT_CODES = ['NETWORK', 'TIMEOUT', 'SERVER_ERROR', 'BUSY', 'RATE_LIMIT'];
@@ -47,7 +49,9 @@ function phiScan(text) {
 }
 
 // ── 設定與登入
+async function loadRelease() { try { const r = await fetch('assets/release.json', { cache: 'no-store' }); S.release = r.ok ? await r.json() : null; } catch (e) { S.release = null; } }
 async function loadConfig() {
+  loadRelease();
   try { const r = await fetch('config.json', { cache: 'no-store' }); S.cfg = await r.json(); } catch (e) { S.cfg = null; }
   const c = S.cfg || {};
   const okApi = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(c.api_url || '') || /^\/api$/.test(c.api_url || '');
@@ -98,6 +102,7 @@ function openReauth(msgText) {
   if (S.reauth) return S.reauth.promise;
   let resolve; const promise = new Promise((r) => { resolve = r; });
   S.reauth = { promise, resolve };
+  document.body.classList.add('reauth-lock'); try { $('#main').setAttribute('aria-hidden', 'true'); } catch (e) {}
   const d = $('#reauth'); $('#reauthMsg').textContent = /SESSION_|TOKEN_/.test(String(msgText || '')) ? '登入已逾時。' : '登入已逾時（約定之登入時數已到）。';
   try { window.google.accounts.id.renderButton($('#reauthGsi'), { theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'rectangular', locale: 'zh-TW', width: 280 }); } catch (e) { $('#reauthMsg').textContent += '（無法載入 Google 登入元件，請確認網路）'; }
   if (d.showModal) { try { d.showModal(); } catch (e) { d.setAttribute('open', ''); } } else d.setAttribute('open', '');
@@ -107,6 +112,7 @@ function openReauth(msgText) {
 function closeReauth(ok) {
   const d = $('#reauth'); try { d.close(); } catch (e) { d.removeAttribute('open'); }
   const r = S.reauth; S.reauth = null; if (r) r.resolve(ok);
+  document.body.classList.remove('reauth-lock'); try { $('#main').removeAttribute('aria-hidden'); } catch (e) {}
   if (ok) live('已重新登入，繼續剛才的操作。');
 }
 const TIMEOUT_S = Object.assign({ analyze: 340, parse: 90, dashboard: 90 }, window.__ANSHIN_TIMEOUT_OVERRIDE__ || {});   // 覆寫只供端對端測試
@@ -168,6 +174,7 @@ function enterApp() {
   $('#whoRole').textContent = `${m.role_zh}${m.perm === 'general' ? '' : '・' + ({ teacher: '教師', learner: '學員', admin: '管理者' }[m.perm])}${m.unit ? '・' + m.unit : ''}`;
   if (m.hospital_name) $('#hospitalName').textContent = m.hospital_name;
   $('#ver').textContent = m.version || '';
+  attestCheck();
   $('#dashHealth').hidden = m.perm !== 'admin';
   $('#f_unit').value = $('#f_unit').value || m.unit || '';
   const units = ['__all__'].concat(m.units || []);
@@ -358,12 +365,15 @@ function renderResult() {
   const U = r.unevaluated, urg = r.urgency;
   let h = '';
   if (r.learner_cmp) h += `<div class="panel" style="margin-bottom:12px"><h2>作答比對</h2><p>找到 <b>${r.learner_cmp.found.length}</b>／${r.learner_cmp.today_total}；漏列 ${r.learner_cmp.missed.length}；多列 ${r.learner_cmp.extra.length}${r.learner_cmp.extra.length ? '（' + esc(r.learner_cmp.extra.join('、')) + '）' : ''}</p></div>`;
+  if (S.attest && !S.attest.ok) h += `<p class="attest-inline" role="note">部署版本未經驗證（${esc(S.attest.reasons.join('；'))}）：本結果只供測試。</p>`;
   if (urg) h += `<div class="urgency ${esc(urg.tier)}" role="status"><span>溝通急迫度：${esc(urg.zh)}</span><small>${esc(urg.basis_zh || '')}</small></div>`;
   if (U.n) h += `<div class="unevaluated" role="alert"><b>未評估 ${U.n} 行：以下醫囑沒有進入評估，今日清單不完整。</b><ul>${U.lines.map((x) => `<li><span class="code">${esc(x.raw)}</span>　${esc(x.reason_zh)}</li>`).join('')}</ul></div>`;
   if (r.status !== 'ok') h += `<p class="msg">${esc(r.status_zh || '')}</p>`;
   h += `<div class="section-title"><h2>今日須處理</h2><span class="count">${r.today.length} 項${U.n ? '・清單不完整' : ''}</span></div>`;
   h += r.today.length ? `<ol class="cards">${r.today.map(cardHtml).join('')}</ol>` : '<p class="muted">本次沒有今日須處理的項目。</p>';
   if (r.review.length) h += `<div class="section-title"><h2>本次檢視</h2><span class="count">${r.review.length}／${r.review_total} 項</span></div><ol class="cards">${r.review.map((x, i) => cardHtml(x, i)).join('')}</ol>`;
+  if ((r.demoted || []).length) h += `<details class="demoted"><summary>已依院方設定降級 ${r.demoted.length} 項（未刪除；展開檢視）</summary><ol class="cards">${r.demoted.map((x, i) => cardHtml(x, i).replace('<p class="card-why">', `<p class="muted">降級原因：${esc(x.demote_reason_zh || '')}</p><p class="card-why">`)).join('')}</ol></details>`;
+  if (r.stabilize_v96 && r.stabilize_v96.source_hidden_n) h += `<p class="muted">${r.stabilize_v96.source_hidden_n} 項卡片之依據尚未登錄正式來源，已標「依據待登錄」。</p>`;
   if (r.gaps.length) h += `<div class="section-title"><h2>待補資料</h2><span class="count">補了會改變上面的判定</span></div><div class="gaps">${r.gaps.map((g) => `<span title="影響：${esc((g.for_items || []).join('、'))}">${esc(fieldZh(g))}</span>`).join('')}</div>`;
   h += `<div class="section-title"><h2>交班</h2><span class="count">${r.handoff.length} 行</span></div><div class="handoff" id="handoffText">${esc(r.handoff.join('\n'))}</div>
     <div class="handoff-actions"><button type="button" id="copyHandoff">複製交班</button><button type="button" id="copyDoctor">複製給醫師</button><button type="button" class="ghost" id="toBoard">到看板</button></div>`;
@@ -559,6 +569,26 @@ window.addEventListener('beforeunload', (e) => { if ($('#f_orders').value.trim()
 
 // v9.3：驗證既有登入期間隱藏 Google 登入鈕，避免誤按而多開一次登入；驗證失敗或登出時再顯示
 function gsiVisible(on) { const b = $('#gsiButton'); if (b) b.style.display = on ? '' : 'none'; }
+// v9.6 階段 I：部署實讀（後端回報值與本網站發布清單逐欄比對；不一致即紅色橫幅）
+async function attestCheck() {
+  const reasons = [], rel = S.release;
+  const r = await api('attest', {});
+  if (!rel) reasons.push('網站缺發布清單 assets/release.json');
+  if (!r || r.ok === false) reasons.push('後端無法回報部署資訊');
+  if (rel && FRONT_BUILD_ID !== rel.frontend_build_id) reasons.push('網站程式與發布清單不一致');
+  if (rel && r && r.ok !== false) {
+    if (r.build_id !== rel.code_build_id) reasons.push('後端程式不是本次發布版本');
+    const fp = (r.rules || {})['BUILD_FINGERPRINT.json'] || {}, mf = (r.rules || {})['runtime_manifest_v1.json'] || {};
+    if (fp.status !== 'ok' || fp.sha256 !== rel.rules['BUILD_FINGERPRINT.json']) reasons.push('雲端規則檔 BUILD_FINGERPRINT.json 不是本次發布版本');
+    if (mf.status !== 'ok' || mf.sha256 !== rel.rules['runtime_manifest_v1.json']) reasons.push('雲端規則檔清單 runtime_manifest_v1.json 不是本次發布版本');
+    if (fp.duplicate || mf.duplicate) reasons.push('雲端資料夾有同名重複檔');
+  }
+  S.attest = { ok: reasons.length === 0, reasons, raw: r };
+  const b = $('#attestBanner');
+  if (reasons.length) { b.hidden = false; b.textContent = `部署驗證未通過：${reasons.join('；')}。本頁只供測試，不得用於臨床。`; }
+  else b.hidden = true;
+  $('#build').textContent = `發布 ${rel ? rel.label : '—'}｜網站 ${FRONT_BUILD_ID.slice(0, 8)}｜後端 ${String(r && r.build_id || '—').slice(0, 8)}${reasons.length ? '（未驗證）' : '（已驗證）'}`;
+}
 (async function boot() {
   const ok = await loadConfig();
   if (!ok) { showSetupError(); return; }

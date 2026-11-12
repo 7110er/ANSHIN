@@ -1,0 +1,12 @@
+{
+ "schema": "site_release_v1",
+ "label": "v9.6-m1",
+ "code_build_id": "cdac8211d4d66e42e3c94aa095428c72509348592e7251124099a764cd6b5472",
+ "frontend_build_id": "7b6086d51d652e3d891131e4dad170542f0b2a2dd89514c9d2562e2d5fa16f91",
+ "code_gs_sha256": "2134bfa2afbfe8155d7e5dd7f8642938aa328ccb6c861445176769fc0be1bd06",
+ "rules": {
+  "BUILD_FINGERPRINT.json": "d8617f79865f7339395bfcbb266c926175103d8495f0463da3c8dbc554529068",
+  "runtime_manifest_v1.json": "2aa2e3716998a35c70b713175801e27ea34984826aafa0cffe6ebe29a3d57366"
+ },
+ "note_zh": "網站登入後以後端「attest」實讀之值逐欄比對本檔；任一不符即顯示紅色橫幅，結果只供測試。"
+}
