@@ -8,7 +8,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 const live = (t) => { const el = $('#live'); el.textContent = ''; setTimeout(() => { el.textContent = t; }, 30); };
 const store = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }, del(k) { try { sessionStorage.removeItem(k); } catch (e) {} } };
 // v9.6：前端建置識別＝本檔將此行引號內值換為 64 個 0 後之 SHA-256（build_v96.py 寫入）
-const FRONT_BUILD_ID = '7b6086d51d652e3d891131e4dad170542f0b2a2dd89514c9d2562e2d5fa16f91';
+const FRONT_BUILD_ID = 'cefa5df1efaae9dfa9e9ac8b8e64dcb7dda30254b362c79ff0cba6902d20f12d';
 const S = { attest: null, release: null, cfg: null, token: null, session: null, me: null, reauth: null, view: 'board', parse: null, result: null, board: null, draft: {} };
 // ── v9.2 分頁間共享會話憑證（只在同一瀏覽器、同網站、且至少一個已登入分頁仍開著時生效）
 const SESS_CH = (() => { try { return new BroadcastChannel('anshin_v9_sess_share'); } catch (e) { return null; } })();
@@ -322,7 +322,7 @@ async function analyze(e) {
   if (!S.parse || S.parse.text !== d.order_lines.join('\n')) { const p = await parse(); if (!p) return; }
   if (S.parse.rows.some((x) => x.status === 'ambiguous')) { msg('有醫囑需選擇品項，選完才能分析。', true); $('#confirm').scrollIntoView({ block: 'start' }); return; }
   const btn = $('#btnAnalyze'); btn.disabled = true; const t0 = Date.now();
-  const tick = setInterval(() => msg(`分析中…已 ${Math.round((Date.now() - t0) / 1000)} 秒（複雜醫囑需 1–3 分鐘）`), 1000);
+  const tick = setInterval(() => msg(`分析中…已 ${Math.round((Date.now() - t0) / 1000)} 秒（正式站目前每床約 3–5 分鐘；效能改善尚未完成）`), 1000);
   const r = await api('analyze', d);
   clearInterval(tick); btn.disabled = false;
   if (!r.ok) { msg(r.error_zh, true); return; }
