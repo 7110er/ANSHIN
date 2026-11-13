@@ -8,7 +8,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 const live = (t) => { const el = $('#live'); el.textContent = ''; setTimeout(() => { el.textContent = t; }, 30); };
 const store = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }, del(k) { try { sessionStorage.removeItem(k); } catch (e) {} } };
 // v9.6：前端建置識別＝本檔將此行引號內值換為 64 個 0 後之 SHA-256（build_v96.py 寫入）
-const FRONT_BUILD_ID = 'cefa5df1efaae9dfa9e9ac8b8e64dcb7dda30254b362c79ff0cba6902d20f12d';
+const FRONT_BUILD_ID = '9a724dcd02c14bed09539798920058e962a33430ec480c7b3f5b204dc086270f';
 const S = { attest: null, release: null, cfg: null, token: null, session: null, me: null, reauth: null, view: 'board', parse: null, result: null, board: null, draft: {} };
 // ── v9.2 分頁間共享會話憑證（只在同一瀏覽器、同網站、且至少一個已登入分頁仍開著時生效）
 const SESS_CH = (() => { try { return new BroadcastChannel('anshin_v9_sess_share'); } catch (e) { return null; } })();
@@ -205,6 +205,7 @@ async function loadBoard() {
   b.removeAttribute('aria-busy');
   if (!r.ok) { b.innerHTML = `<p class="msg err">${esc(r.error_zh)}</p>`; return; }
   S.board = r; renderBoard();
+  if (r.test_hidden_n) b.insertAdjacentHTML('afterbegin', `<p class="muted" role="note" style="flex-basis:100%">已隱藏測試資料 ${r.test_hidden_n} 位（化名以 R##-／合成／測試／TEST 開頭）。</p>`);
 }
 function renderBoard() {
   const r = S.board, b = $('#board'), cols = r.columns;
@@ -229,7 +230,7 @@ function kcard(k, ci, cols) {
   const prev = cols[ci - 1], next = cols[ci + 1];
   const t = new Date(k.updated_at), when = `${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
   return `<article class="kcard" draggable="true" data-key="${esc(k.case_key)}" aria-label="${esc(k.alias)}，${esc(k.status_zh)}">
-    <div class="k-top"><span class="alias">${esc(k.alias)}</span><span class="meta">${esc(k.unit || '')}</span></div>
+    <div class="k-top"><span class="alias">${esc(k.alias)}</span>${k.is_test ? '<span class="badge">測試</span>' : ''}<span class="meta">${esc(k.unit || '')}</span></div>
     <div class="meta">更新 ${esc(when)}${k.mine ? '・我' : ''}</div>
     <div class="stats">${k.today_n ? `<span class="badge sev">今日 ${k.today_n}</span>` : ''}${k.unevaluated_n ? `<span class="badge sev">未評估 ${k.unevaluated_n}</span>` : ''}${k.urgency_zh ? `<span class="badge">急迫度 ${esc(k.urgency_zh)}</span>` : ''}</div>
     <div class="k-actions">
@@ -382,9 +383,9 @@ function renderResult() {
 }
 function doctorText() {
   const r = S.result; const lines = [`【藥師用藥評估】${$('#f_alias').value}　急迫度：${r.urgency ? r.urgency.zh : '—'}`];
-  r.today.forEach((x, i) => lines.push(`${i + 1}. ${x.title_zh}：${x.why_zh}`, `   建議：${x.action_zh}`));
-  if (r.unevaluated.n) lines.push(`未評估醫囑 ${r.unevaluated.n} 行（未納入上列）`);
-  return lines.slice(0, 16).join('\n');
+  if (r.unevaluated.n) lines.push(`未評估醫囑 ${r.unevaluated.n} 行（未納入下列，請今日確認）`);
+  r.today.forEach((x, i) => lines.push(`${i + 1}. ${x.title_zh}：${x.why_zh}`, `   建議：${x.action_zh}`));   // v9.8 H0：不截斷（原 16 行上限會漏卡）
+  return lines.join('\n');
 }
 async function copy(text, label) { try { await navigator.clipboard.writeText(text); live(`已複製${label}`); msg(`已複製${label}。`); } catch (e) { msg('瀏覽器不允許複製；請手動選取文字。', true); } }
 
@@ -424,6 +425,7 @@ async function loadDash() {
   h += kpi('E4', '評核完成率', fmtRate(t.E4_rated), '已評核／已作答');
   h += kpi('E5', '回饋時效', fmtNum(t.E5_feedback_h.median, ' 小時'), `中位數；n＝${t.E5_feedback_h.n}`);
   h += `</div><div class="charts">${entrustChart(t.E3_entrustment, t.E3_n, k)}</div>`;
+  if (r.test_excluded_encounters) h += `<p class="muted" role="note">已排除測試資料之評估 ${r.test_excluded_encounters} 次。</p>`;
   h += `<div class="notbuilt"><b>尚未建置之指標</b><ul>${r.not_built_zh.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div><div id="healthBox"></div>`;
   el.innerHTML = h;
 }

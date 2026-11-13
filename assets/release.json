@@ -1,11 +1,11 @@
 {
  "schema": "site_release_v1",
- "label": "v9.7",
- "code_build_id": "ec1c53b541e654c03bded588b9989dc325d4158fe8550de774f8eee3bd8ccba6",
- "frontend_build_id": "cefa5df1efaae9dfa9e9ac8b8e64dcb7dda30254b362c79ff0cba6902d20f12d",
- "code_gs_sha256": "9e80653732ccd2fb5fdd3fa1c56cb9ad4c811cfaeeb598558400f5c3093eb285",
+ "label": "v9.8",
+ "code_build_id": "e2e40c6756e2fc8763e6896cad2bc8eb249abea38e9038ad563d2090da5ff7b4",
+ "frontend_build_id": "9a724dcd02c14bed09539798920058e962a33430ec480c7b3f5b204dc086270f",
+ "code_gs_sha256": "2baf0118b409143223c87e979602a5ec573b06129d15b102f32d103980ee2398",
  "rules": {
-  "BUILD_FINGERPRINT.json": "bcdcabec94164d2ad8ffc2f26dd4959b09397a662d3710750e5f2cc159763867",
+  "BUILD_FINGERPRINT.json": "5388b93349f6b2f7cafb1a6a5ce8917f0482dce6e70aec596ab449283a65f710",
   "runtime_manifest_v1.json": "2aa2e3716998a35c70b713175801e27ea34984826aafa0cffe6ebe29a3d57366"
  },
  "note_zh": "網站登入後以後端「attest」實讀之值逐欄比對本檔；任一不符即顯示紅色橫幅，結果只供測試。"
