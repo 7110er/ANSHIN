@@ -8,7 +8,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 const live = (t) => { const el = $('#live'); el.textContent = ''; setTimeout(() => { el.textContent = t; }, 30); };
 const store = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }, del(k) { try { sessionStorage.removeItem(k); } catch (e) {} } };
 // v9.6：前端建置識別＝本檔將此行引號內值換為 64 個 0 後之 SHA-256（build_v96.py 寫入）
-const FRONT_BUILD_ID = '9a724dcd02c14bed09539798920058e962a33430ec480c7b3f5b204dc086270f';
+const FRONT_BUILD_ID = 'f95cba0c2f1e0c5efa59997daff819232cd088bc907015b304dd87b19f5f31bd';
 const S = { attest: null, release: null, cfg: null, token: null, session: null, me: null, reauth: null, view: 'board', parse: null, result: null, board: null, draft: {} };
 // ── v9.2 分頁間共享會話憑證（只在同一瀏覽器、同網站、且至少一個已登入分頁仍開著時生效）
 const SESS_CH = (() => { try { return new BroadcastChannel('anshin_v9_sess_share'); } catch (e) { return null; } })();
@@ -323,11 +323,13 @@ async function analyze(e) {
   if (!S.parse || S.parse.text !== d.order_lines.join('\n')) { const p = await parse(); if (!p) return; }
   if (S.parse.rows.some((x) => x.status === 'ambiguous')) { msg('有醫囑需選擇品項，選完才能分析。', true); $('#confirm').scrollIntoView({ block: 'start' }); return; }
   const btn = $('#btnAnalyze'); btn.disabled = true; const t0 = Date.now();
-  const tick = setInterval(() => msg(`分析中…已 ${Math.round((Date.now() - t0) / 1000)} 秒（正式站目前每床約 3–5 分鐘；效能改善尚未完成）`), 1000);
+  const tick = setInterval(() => msg(`分析中…已 ${Math.round((Date.now() - t0) / 1000)} 秒。逐行確認表可先檢視；結果回來後自動展開。`), 1000);
   const r = await api('analyze', d);
   clearInterval(tick); btn.disabled = false;
   if (!r.ok) { msg(r.error_zh, true); return; }
-  S.result = r; msg(`完成：今日須處理 ${r.today.length} 項${r.unevaluated.n ? `；未評估 ${r.unevaluated.n} 行` : ''}。`);
+  S.result = r; const sec = (n) => (n == null ? '—' : (n / 1000).toFixed(1));
+  const tm = r.timing_v99 ? `（本次 ${sec(Date.now() - t0)} 秒：後端 ${sec(r.server_ms)}、規則載入 ${sec(r.timing_v99.load_ms)}、事件寫入 ${sec(r.timing_v99.events_ms)}）` : '';
+  msg(`完成：今日須處理 ${r.today.length} 項${r.unevaluated.n ? `；未評估 ${r.unevaluated.n} 行` : ''}。${tm}${r.events_persist_error_zh ? '　' + r.events_persist_error_zh : ''}`);
   renderResult();
   // F83：完成即見結果——收合逐行確認表，捲至結果並移焦點
   const cf = $('#confirmWrap'); if (cf && S.parse) { cf.open = false; $('#confirmSum').textContent = `逐行確認表（${S.parse.rows.length} 行；已辨識 ${S.parse.counts.resolved}）`; }
