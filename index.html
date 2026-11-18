@@ -67,6 +67,14 @@
   <section id="view-assess" class="view" hidden aria-labelledby="assessTitle">
     <div class="view-head"><div><h1 id="assessTitle">病人評估</h1><p class="muted">藥師・住院・單一病人</p></div></div>
     <div class="assess">
+      <section class="panel" id="hisPanel" aria-labelledby="hisH">
+        <h2 id="hisH" class="h3">HIS 帶入（選用）</h2>
+        <p class="muted">在 MVAS 按「安心桃選擷取」書籤，資料會自動送到本頁；或貼上交換碼。帶入後每欄標示「HIS」，可再修改。病人資料只留在本電腦，不上傳。</p>
+        <label class="sr-only" for="hisCode">HIS 交換碼</label><textarea id="hisCode" rows="2" spellcheck="false" placeholder="貼上 HIS 交換碼"></textarea>
+        <div class="row-actions"><button type="button" class="btn" id="btnHisPaste">讀入交換碼</button><button type="button" class="btn" id="btnWardRun" hidden>整病房分析</button></div>
+        <div id="hisMsg" class="muted" role="status" aria-live="polite"></div>
+        <div id="wardQueue"></div>
+      </section>
       <form class="panel input-panel" id="assessForm" autocomplete="off" novalidate>
         <fieldset>
           <legend>病人</legend>
@@ -98,6 +106,22 @@
             <label class="field"><span>最低 HR</span><input data-lab="hr_min" type="number" step="1"></label>
             <label class="field"><span>檢驗幾天前</span><input data-lab="lab_days_ago" type="number" step="1"></label>
           </div>
+          <details class="more">
+            <summary>危急值影子觀察欄（選填；只記錄、不出卡，待院內核准）</summary>
+            <div class="grid g4">
+              <label class="field"><span>INR</span><input data-lab="inr" type="number" step="0.1"></label>
+              <label class="field"><span>ANC /µL</span><input data-lab="anc_per_ul" type="number" step="1"></label>
+              <label class="field"><span>校正鈣 mg/dL</span><input data-lab="ca_corr" type="number" step="0.1"></label>
+              <label class="field"><span>磷 mg/dL</span><input data-lab="phos" type="number" step="0.1"></label>
+              <label class="field"><span>CK U/L</span><input data-lab="ck" type="number" step="1"></label>
+              <label class="field"><span>NH3 µmol/L</span><input data-lab="nh3_umol" type="number" step="1"></label>
+              <label class="field"><span>ALT 上限 U/L</span><input data-lab="alt_uln" type="number" step="1"></label>
+              <label class="field"><span>Digoxin ng/mL</span><input data-lab="lv_digoxin" type="number" step="0.1"></label>
+              <label class="field"><span>Lithium mmol/L</span><input data-lab="lv_lithium" type="number" step="0.1"></label>
+              <label class="field"><span>Theophylline mg/L</span><input data-lab="lv_theophylline" type="number" step="0.1"></label>
+              <label class="field"><span>Phenytoin 總濃度 mg/L</span><input data-lab="lv_phenytoin_total" type="number" step="0.1"></label>
+            </div>
+          </details>
           <label class="field"><span>ICD-10（以空白或逗號分隔）</span><input id="f_icd" placeholder="例：I48.91 N18.4"></label>
           <div class="checks">
             <label class="check"><input type="checkbox" data-flag="active_bleeding"> 活動性出血</label>
