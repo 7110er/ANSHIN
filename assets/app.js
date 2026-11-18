@@ -8,7 +8,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 const live = (t) => { const el = $('#live'); el.textContent = ''; setTimeout(() => { el.textContent = t; }, 30); };
 const store = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }, del(k) { try { sessionStorage.removeItem(k); } catch (e) {} } };
 // v9.6：前端建置識別＝本檔將此行引號內值換為 64 個 0 後之 SHA-256（build_v96.py 寫入）
-const FRONT_BUILD_ID = 'f95cba0c2f1e0c5efa59997daff819232cd088bc907015b304dd87b19f5f31bd';
+const FRONT_BUILD_ID = '02e2224e6c7535b4e5a3df5a1e25fab183d801e0a447fc888bac398961e67e53';
 const S = { attest: null, release: null, cfg: null, token: null, session: null, me: null, reauth: null, view: 'board', parse: null, result: null, board: null, draft: {} };
 // ── v9.2 分頁間共享會話憑證（只在同一瀏覽器、同網站、且至少一個已登入分頁仍開著時生效）
 const SESS_CH = (() => { try { return new BroadcastChannel('anshin_v9_sess_share'); } catch (e) { return null; } })();
@@ -49,6 +49,50 @@ function phiScan(text) {
 }
 
 // ── 設定與登入
+// ── v10.0 本機引擎（藍圖 v21.1 P1）：加密引擎包 → Web Worker 判讀；伺服器只發金鑰、收結果。不支援時改用伺服器分析（較慢）。
+const ENG = { w: null, ready: null, seq: 0, pend: {}, info: null, fallback_zh: '' };
+function engCall(m, tr) { return new Promise((res) => { const id = ++ENG.seq; ENG.pend[id] = res; ENG.w.postMessage(Object.assign({ id }, m), tr || []); }); }
+function idb() { return new Promise((res) => { try { const r = indexedDB.open('anshin-engine', 1); r.onupgradeneeded = () => r.result.createObjectStore('pack'); r.onsuccess = () => res(r.result); r.onerror = () => res(null); } catch (e) { res(null); } }); }
+async function idbGet(k) { const db = await idb(); if (!db) return null; return new Promise((res) => { try { const q = db.transaction('pack').objectStore('pack').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); } catch (e) { res(null); } }); }
+async function idbPut(k, v) { const db = await idb(); if (!db) return; try { const st = db.transaction('pack', 'readwrite').objectStore('pack'); st.clear(); st.put(v, k); } catch (e) {} }
+async function ensureEngine() {
+  if (ENG.ready) return ENG.ready;
+  ENG.ready = (async () => {
+    const pk = S.release && S.release.pack;
+    if (!pk || typeof Worker === 'undefined' || typeof DecompressionStream === 'undefined' || !window.crypto || !crypto.subtle) return { ok: false, error_zh: '此瀏覽器或網站版本不支援本機引擎' };
+    const kr = await api('engine_key', { kid: pk.kid });
+    if (!kr.ok) return kr;
+    if (kr.code_build_id !== S.release.code_build_id) return { ok: false, error_zh: '後端與網站版本不同，無法啟用本機引擎' };
+    let buf = await idbGet(pk.sha_cipher);
+    if (!buf) { let r; try { r = await fetch(pk.file, { cache: 'no-store' }); } catch (e) { r = null; } if (!r || !r.ok) return { ok: false, error_zh: '引擎包下載失敗' }; buf = await r.arrayBuffer(); idbPut(pk.sha_cipher, buf); }
+    ENG.w = new Worker('assets/engine-worker.js');
+    ENG.w.onmessage = (e) => { const f = ENG.pend[e.data.id]; delete ENG.pend[e.data.id]; if (f) f(e.data.out); };
+    ENG.w.onerror = () => { Object.keys(ENG.pend).forEach((k) => { ENG.pend[k]({ ok: false, error_zh: '本機引擎執行中斷' }); delete ENG.pend[k]; }); };
+    const out = await engCall({ cmd: 'init', cipher: buf.slice(0), key_b64: kr.key_b64, sha_cipher: pk.sha_cipher, sha_plain: pk.sha_plain, code_build_id: S.release.code_build_id, role_code: kr.role_code });
+    if (!out || !out.ok) return out || { ok: false, error_zh: '本機引擎啟動失敗' };
+    ENG.info = { settings: kr.settings, settings_sha: kr.settings_sha, perm: kr.perm, role_code: kr.role_code, unit: kr.unit, init_ms: out.init_ms };
+    return { ok: true };
+  })();
+  const r = await ENG.ready;
+  if (!r.ok) { ENG.ready = null; if (ENG.w) { ENG.w.terminate(); ENG.w = null; } ENG.fallback_zh = r.error_zh || '本機引擎無法啟用'; }
+  return r;
+}
+function engCtx() { return { perm: ENG.info.perm, role_code: ENG.info.role_code, unit: ENG.info.unit, settings: ENG.info.settings }; }
+async function engineParse(lines) { const e = await ensureEngine(); return e.ok ? engCall({ cmd: 'parse', payload: { order_lines: lines }, ctx: engCtx() }).then((r) => Object.assign({ ok: r.ok !== false }, r)) : api('parse', { order_lines: lines }); }
+// 本機分析＋伺服器記錄；本機引擎不可用時改用伺服器分析（結果相同、較慢）
+async function engineAnalyze(d) {
+  const e = await ensureEngine();
+  if (!e.ok) { const r = await api('analyze', d); if (r.ok) r.engine_site = 'server'; return r; }
+  const out = await engCall({ cmd: 'analyze', payload: d, ctx: engCtx() });
+  if (!out || !out.ok) return out || { ok: false, error_zh: '本機引擎無回應' };
+  const er = out.er, rec = await api('record_result', { alias: er.alias, unit: er.unit, today: er.today, review: er.review, demoted: er.demoted || [], pending_cards: er.pending_cards || [],
+    urgency: er.urgency, unevaluated: { n: er.unevaluated ? er.unevaluated.n : 0 }, counts: out.counts, engine_ms: er.engine_ms, timing_v99: er.timing_v99, shadow_v10: er.shadow_v10 || [],
+    settings_sha: er.settings_sha, code_build_id: er.code_build_id, events: out.events || {} });
+  const r = Object.assign({ ok: true, engine_site: 'browser' }, er);
+  if (rec.ok) { r.encounter_id = rec.encounter_id; r.case_key = rec.case_key; r.persisted = rec.persisted; r.persist_error_zh = rec.persist_error_zh; r.events_persist_error_zh = rec.events_persist_error_zh; }
+  else { r.persisted = false; r.persist_error_zh = '評估結果已產生，但紀錄未保存：' + (rec.error_zh || '後端未回應'); }
+  return r;
+}
 async function loadRelease() { try { const r = await fetch('assets/release.json', { cache: 'no-store' }); S.release = r.ok ? await r.json() : null; } catch (e) { S.release = null; } }
 async function loadConfig() {
   loadRelease();
@@ -270,7 +314,7 @@ async function parse() {
   if (!lines.length) { msg('請先貼上醫囑。', true); $('#f_orders').focus(); return null; }
   const phi = phiScan(lines.join('\n')); if (phi.length) { msg(`醫囑含可識別資料（${phi.join('、')}），請刪除後再送出。`, true); return null; }
   msg('逐行辨識中…');
-  const r = await api('parse', { order_lines: lines });
+  const r = await engineParse(lines);
   if (!r.ok) { msg(r.error_zh, true); return null; }
   S.parse = { text: lines.join('\n'), rows: r.line_status, counts: r.counts };
   renderConfirm(r); renderTrust();
@@ -324,12 +368,12 @@ async function analyze(e) {
   if (S.parse.rows.some((x) => x.status === 'ambiguous')) { msg('有醫囑需選擇品項，選完才能分析。', true); $('#confirm').scrollIntoView({ block: 'start' }); return; }
   const btn = $('#btnAnalyze'); btn.disabled = true; const t0 = Date.now();
   const tick = setInterval(() => msg(`分析中…已 ${Math.round((Date.now() - t0) / 1000)} 秒。逐行確認表可先檢視；結果回來後自動展開。`), 1000);
-  const r = await api('analyze', d);
+  const r = await engineAnalyze(d);
   clearInterval(tick); btn.disabled = false;
   if (!r.ok) { msg(r.error_zh, true); return; }
   S.result = r; const sec = (n) => (n == null ? '—' : (n / 1000).toFixed(1));
-  const tm = r.timing_v99 ? `（本次 ${sec(Date.now() - t0)} 秒：後端 ${sec(r.server_ms)}、規則載入 ${sec(r.timing_v99.load_ms)}、事件寫入 ${sec(r.timing_v99.events_ms)}）` : '';
-  msg(`完成：今日須處理 ${r.today.length} 項${r.unevaluated.n ? `；未評估 ${r.unevaluated.n} 行` : ''}。${tm}${r.events_persist_error_zh ? '　' + r.events_persist_error_zh : ''}`);
+  const tm = r.engine_site === 'browser' ? `（本次 ${sec(Date.now() - t0)} 秒：本機判讀 ${sec(r.engine_ms)}）` : (r.timing_v99 ? `（本次 ${sec(Date.now() - t0)} 秒：伺服器分析${ENG.fallback_zh ? '，' + ENG.fallback_zh : ''}；後端 ${sec(r.server_ms)}）` : '');
+  msg(`完成：今日須處理 ${r.today.length} 項${r.unevaluated.n ? `；未評估 ${r.unevaluated.n} 行` : ''}。${tm}${r.persist_error_zh ? '　' + r.persist_error_zh : ''}${r.events_persist_error_zh ? '　' + r.events_persist_error_zh : ''}`, !!r.persist_error_zh);
   renderResult();
   // F83：完成即見結果——收合逐行確認表，捲至結果並移焦點
   const cf = $('#confirmWrap'); if (cf && S.parse) { cf.open = false; $('#confirmSum').textContent = `逐行確認表（${S.parse.rows.length} 行；已辨識 ${S.parse.counts.resolved}）`; }
@@ -619,3 +663,80 @@ async function attestCheck() {
     else if (!/^(SESSION_|TOKEN_)/.test(r.error_code || '') && r.error_zh) $('#loginMsg').textContent = r.error_zh;
   } else if (store.get(DRAFT_KEY)) { $('#loginMsg').textContent = '重新登入後會還原剛才的輸入。'; }
 })();
+
+// ── v10.0 HIS 零 token 帶入（藍圖 v21.1 §5）：MVAS 書籤 → postMessage／交換碼 → 自動填表；整病房分析與風險排序。病人資料只在本頁記憶體。
+const HIS_ORIGINS = ['http://192.168.28.96'];
+const HIS_LAB_MAP = { K: 'K', Na: 'Na', Mg: 'mg', Hb: 'Hb', PLT: 'PLT', Glu: 'glu', AST: 'AST', ALT: 'ALT', Alb: 'alb', INR: 'inr', ANC: 'anc_per_ul', Ca_corr: 'ca_corr', P: 'phos', CK: 'ck', NH3: 'nh3_umol',
+  ALT_ULN: 'alt_uln', Digoxin: 'lv_digoxin', Lithium: 'lv_lithium', Theophylline: 'lv_theophylline', Phenytoin: 'lv_phenytoin_total', SBP_min: 'sbp_min', HR_min: 'hr_min' };
+S.his = null; S.ward = [];
+async function sha256Hex(str) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return Array.from(new Uint8Array(b)).map((x) => x.toString(16).padStart(2, '0')).join(''); }
+async function hisValidate(pkt) {
+  if (!pkt || pkt.schema !== 'his_exchange_v1' || !Array.isArray(pkt.patients) || !pkt.patients.length || pkt.patients.length > 80) return '交換包格式不符（schema 或病人數）';
+  const integ = pkt.integrity || {};
+  if (integ.sha256 !== await sha256Hex(JSON.stringify(pkt.patients))) return '交換包內容雜湊不符，已拒收（請重新擷取）';
+  if (integ.n_patients !== pkt.patients.length) return '交換包病人數不符，已拒收';
+  for (const p of pkt.patients) {
+    if (!Array.isArray(p.orders) || p.orders.some((o) => typeof (o && o.raw) !== 'string')) return '交換包醫囑欄位不符';
+    if (!Array.isArray(p.labs || [])) return '交換包檢驗欄位不符';
+  }
+  const phi = phiScan(JSON.stringify(pkt.patients.map((p) => [p.bed, p.unit, p.icd, (p.orders || []).map((o) => o.raw)])));
+  if (phi.length) return `交換包含可識別資料（${phi.join('、')}），已拒收`;
+  return null;
+}
+function hisToPayload(p) {
+  const labs = {}; let maxH = 0;
+  (p.labs || []).forEach((l) => { const k = HIS_LAB_MAP[l.item]; if (k && l.value !== '' && l.value != null && !isNaN(Number(l.value))) { labs[k] = String(l.value); if (Number(l.h_ago) > maxH) maxH = Number(l.h_ago); } });
+  if (Object.keys(labs).length) labs.lab_days_ago = String(Math.ceil(maxH / 24));
+  const bed = String(p.bed || '').replace(/[^0-9A-Za-z]/g, '');
+  return { alias: String(p.alias || (bed ? 'R-' + bed : '')).slice(0, 16), unit: String(p.unit || '').slice(0, 30), admission_day: p.admission_day != null ? String(p.admission_day) : '',
+    icd: (p.icd || []).join(' '), labs, flags: {}, order_lines: (p.orders || []).map((o) => o.raw).filter((x) => x.trim()),
+    patient: { age: p.age != null ? String(p.age) : '', sex: p.sex || '', weight_kg: p.weight_kg != null ? String(p.weight_kg) : '', scr_mg_dl: p.scr_mg_dl != null ? String(p.scr_mg_dl) : '',
+      scr_days_ago: p.scr_h_ago != null ? String(Math.ceil(Number(p.scr_h_ago) / 24)) : '', dialysis: p.dialysis === true } };
+}
+function hisFill(d) {
+  const set = (id, v) => { const el = typeof id === 'string' ? $(id) : id; if (!el) return; el.value = v == null ? '' : v; el.classList.toggle('src-his', v !== '' && v != null); el.dataset.src = v !== '' && v != null ? 'his' : ''; };
+  set('#f_alias', d.alias); set('#f_unit', d.unit); set('#f_adm', d.admission_day); set('#f_age', d.patient.age); set('#f_sex', d.patient.sex); set('#f_wt', d.patient.weight_kg);
+  set('#f_scr', d.patient.scr_mg_dl); set('#f_scr_ago', d.patient.scr_days_ago); $('#f_dialysis').checked = d.patient.dialysis; set('#f_icd', d.icd);
+  $$('[data-lab]').forEach((el) => set(el, d.labs[el.dataset.lab]));
+  $('#f_orders').value = d.order_lines.join('\n'); $('#f_orders').classList.add('src-his'); S.parse = null;
+}
+document.addEventListener('input', (e) => { if (e.target && e.target.dataset && e.target.dataset.src === 'his') { e.target.dataset.src = 'manual'; e.target.classList.remove('src-his'); e.target.classList.add('src-manual'); } });
+async function hisAccept(pkt) {
+  const err = await hisValidate(pkt), m = $('#hisMsg');
+  if (err) { m.textContent = err; m.classList.add('err'); return { ok: false, error: err }; }
+  m.classList.remove('err'); S.his = pkt;
+  if (pkt.patients.length === 1) { hisFill(hisToPayload(pkt.patients[0])); m.textContent = `已帶入 1 位（${pkt.patients[0].orders.length} 行醫囑）。請檢查標示「HIS」之欄位後送出。`; $('#btnWardRun').hidden = true; $('#wardQueue').innerHTML = ''; }
+  else { S.ward = pkt.patients.map((p) => ({ p, d: hisToPayload(p), r: null })); renderWard(); $('#btnWardRun').hidden = false; m.textContent = `已帶入 ${pkt.patients.length} 位。可按「整病房分析」。`; }
+  return { ok: true, n: pkt.patients.length };
+}
+const SEV_RANK = { critical: 4, act_today: 3, review: 2, info: 1 };
+function wardScore(r) { if (!r || !r.ok) return -1; const top = Math.max(0, ...r.today.map((x) => SEV_RANK[x.severity_class] || 0)); const ue = r.unevaluated && r.unevaluated.n ? r.unevaluated.n : 0; return top * 1000 + r.today.length * 10 + ue; }
+function renderWard() {
+  const rows = S.ward.map((w, i) => ({ w, i })).sort((a, b) => wardScore(b.w.r) - wardScore(a.w.r));
+  $('#wardQueue').innerHTML = `<div class="tbl-wrap"><table><caption>病房佇列（已分析者依風險排序：最高嚴重度 → 今日卡數 → 未評估行數）</caption>
+    <thead><tr><th scope="col">化名</th><th scope="col">醫囑行</th><th scope="col">今日卡</th><th scope="col">最高</th><th scope="col">未評估</th><th scope="col">動作</th></tr></thead><tbody>${rows.map(({ w, i }) => {
+      const r = w.r, top = r && r.ok ? (r.today[0] ? (SEV_ZH[r.today.slice().sort((a, b) => (SEV_RANK[b.severity_class] || 0) - (SEV_RANK[a.severity_class] || 0))[0].severity_class] || '') : '無') : (r ? '失敗' : '未分析');
+      return `<tr><td>${esc(w.d.alias)}</td><td>${w.d.order_lines.length}</td><td>${r && r.ok ? r.today.length : '—'}</td><td>${esc(top)}</td><td>${r && r.ok && r.unevaluated ? r.unevaluated.n : '—'}</td>
+        <td><button type="button" class="btn" data-ward="${i}">${r && r.ok ? '開啟結果' : '帶入表單'}</button></td></tr>`; }).join('')}</tbody></table></div>`;
+}
+$('#wardQueue').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ward]'); if (!b) return; const w = S.ward[Number(b.dataset.ward)];
+  hisFill(w.d); if (w.r && w.r.ok) { S.result = w.r; renderResult(); $('#result').scrollIntoView({ block: 'start' }); }
+});
+$('#btnWardRun').addEventListener('click', async () => {
+  const m = $('#hisMsg'), e = await ensureEngine();
+  if (!e.ok) { m.textContent = '整病房分析需要本機引擎：' + (e.error_zh || '無法啟用'); m.classList.add('err'); return; }
+  const btn = $('#btnWardRun'); btn.disabled = true; const t0 = Date.now();
+  for (let i = 0; i < S.ward.length; i++) { m.textContent = `分析中 ${i + 1}／${S.ward.length}…`; S.ward[i].r = await engineAnalyze(S.ward[i].d); renderWard(); }
+  btn.disabled = false; m.textContent = `完成 ${S.ward.length} 位（${Math.round((Date.now() - t0) / 1000)} 秒）。已依風險排序；結果已記錄者顯示於看板。`;
+});
+$('#btnHisPaste').addEventListener('click', async () => {
+  const t = $('#hisCode').value.trim(), m = $('#hisMsg'); let pkt = null;
+  try { if (!/^ANSHIN1:/.test(t)) throw new Error(); pkt = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(t.slice(8)), (c) => c.charCodeAt(0)))); } catch (e) { m.textContent = '交換碼格式不符（應以 ANSHIN1: 開頭）'; m.classList.add('err'); return; }
+  await hisAccept(pkt); $('#hisCode').value = '';
+});
+window.addEventListener('message', async (e) => {
+  if (HIS_ORIGINS.indexOf(e.origin) < 0 || !e.data || e.data.type !== 'anshin_his_v1') return;
+  const r = S.me ? await hisAccept(e.data.packet) : { ok: false, error: '請先登入安心桃選' };
+  try { e.source.postMessage({ type: 'anshin_his_ack', ok: r.ok, n: r.n || 0, error: r.error || null }, e.origin); } catch (x) {}
+});
