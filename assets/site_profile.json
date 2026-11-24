@@ -1,0 +1,226 @@
+{
+  "schema": "site_profile_v1",
+  "site_id": "tygh",
+  "site_name_zh": "衛生福利部桃園醫院",
+  "status": "active",
+  "version": "1.0",
+  "date": "2026-11-20",
+  "_meta": {
+    "blueprint": "v23.0 W1",
+    "rule_zh": "院別差異（HIS 項目名、單位換算、參考區間、醫令佔位碼、品名前綴、病房別、危急值來源）只登錄於本檔；通用臨床規則與程式不得出現院別字串（建置時靜態檢查）",
+    "ai_self_sign": false,
+    "provenance_zh": "自 v10.1 app.js HIS_LAB_MAP 與 Code.gs 解析器佔位碼規則抽出，行為不變（W1 回放逐項相同為驗收條件）"
+  },
+  "his": {
+    "system": "MVAS",
+    "grammar_file": "his_grammar_v1.json",
+    "exchange_schemas": [
+      "his_exchange_v1",
+      "his_exchange_v2"
+    ],
+    "poct_glucose_window_h": 72,
+    "lab_item_map": {
+      "K": {
+        "key": "K"
+      },
+      "Na": {
+        "key": "Na"
+      },
+      "Mg": {
+        "key": "mg"
+      },
+      "Hb": {
+        "key": "Hb"
+      },
+      "PLT": {
+        "key": "PLT"
+      },
+      "Glu": {
+        "key": "glu"
+      },
+      "AST": {
+        "key": "AST"
+      },
+      "ALT": {
+        "key": "ALT"
+      },
+      "Alb": {
+        "key": "alb"
+      },
+      "INR": {
+        "key": "inr"
+      },
+      "ANC": {
+        "key": "ANC",
+        "factor": 0.001,
+        "round": 1,
+        "from_unit": "/µL",
+        "to_unit": "×10⁹/L",
+        "note_zh": "MVAS 無 ANC 欄；書籤 v1 由 WBC×Neu% 推算（/µL）"
+      },
+      "Ca_corr": {
+        "key": "ca_corr"
+      },
+      "P": {
+        "key": "phos"
+      },
+      "CK": {
+        "key": "ck"
+      },
+      "NH3": {
+        "key": "nh3_umol"
+      },
+      "ALT_ULN": {
+        "key": "alt_uln"
+      },
+      "Digoxin": {
+        "key": "lv_digoxin"
+      },
+      "Lithium": {
+        "key": "lv_lithium"
+      },
+      "Theophylline": {
+        "key": "lv_theophylline"
+      },
+      "Phenytoin": {
+        "key": "lv_phenytoin_total"
+      },
+      "SBP_min": {
+        "key": "sbp_min"
+      },
+      "HR_min": {
+        "key": "hr_min"
+      },
+      "WBC": {
+        "key": "WBC"
+      },
+      "HbA1c": {
+        "key": "hba1c"
+      },
+      "TBil": {
+        "key": "tbil"
+      },
+      "Temp_max": {
+        "key": "temp_max"
+      },
+      "Cr": {
+        "key": "scr"
+      },
+      "NA": {
+        "key": "Na",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
+      },
+      "MG": {
+        "key": "mg",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
+      },
+      "GLU": {
+        "key": "glu",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
+      },
+      "GOT": {
+        "key": "AST",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
+      },
+      "GPT": {
+        "key": "ALT",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
+      },
+      "ALB": {
+        "key": "alb",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
+      },
+      "TBIL": {
+        "key": "tbil",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
+      },
+      "HGB": {
+        "key": "Hb",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
+      },
+      "Li": {
+        "key": "lv_lithium",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
+      },
+      "Dilantin": {
+        "key": "lv_phenytoin_total",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
+      },
+      "ANC_per_ul": {
+        "key": "anc_per_ul",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
+      }
+    },
+    "lab_capture_v1": {
+      "bookmarklet": "mvas_capture_v1.1.0",
+      "vital_capture_v1": { "source_zh": "MVAS 生命徵象 TPR 繪圖資料（SPValue／PLValue／TPValue；日期列＋分鐘；2026-11-23 院內頁面結構分析）", "window_h": 72, "mapping_zh": "SPValue→sbp、PLValue→hr、TPValue（0.1°C）→temp【未經查證：由數值範圍推定，待護理部確認】", "weight": "not_captured" },
+      "groups": [
+        "生化",
+        "血液",
+        "藥物濃度"
+      ],
+      "time_basis_zh": "簽收日（民國 yyyMMddHHmm）【未經查證：簽收時間≠採檢時間】",
+      "unit_assumptions_zh": "各項單位未於頁面標示，沿用本院常規單位【未經查證】；以 10 床逐欄比對驗證",
+      "not_consumed_zh": "Van Thou、Depakin、Ketone、Carba 目前無規則消費，擷取但不轉入"
+    }
+  },
+  "reference_ranges": {
+    "_note_zh": "序列推導（異常持續天數）用之檢驗參考區間；屬院內檢驗科設定",
+    "K": [
+      3.5,
+      5.0
+    ],
+    "Na": [
+      135,
+      145
+    ]
+  },
+  "order_placeholders": [
+    {
+      "id": "ORDER_TEXT_99",
+      "match": "^99(IV|ER)",
+      "flags": "i",
+      "action": "not_medication",
+      "reason_zh": "輸液或文字醫囑佔位碼（99IV／99ER），非藥品列"
+    },
+    {
+      "id": "CONTRAST_NUCLEAR",
+      "match": "^\\.?&",
+      "flags": "",
+      "action": "not_medication",
+      "reason_zh": "顯影劑或核醫藥品，本系統不評估（範圍第 3 層）"
+    },
+    {
+      "id": "INPATIENT_RECORD",
+      "match": "^98[A-Z0-9]{1,8}$",
+      "flags": "i",
+      "action": "strip_code_merge_if_formal",
+      "reason_zh": "住院用紀錄（98 碼）與同成分正式醫令合併，不另評估"
+    }
+  ],
+  "name_prefix_strip": [
+    "＊",
+    "*",
+    "(針劑)",
+    "（針劑）"
+  ],
+  "wards": {
+    "status": "awaiting_site_data",
+    "icu_units": [],
+    "note_zh": "病房代碼表與 ICU 單位清單待院方提供（B4）；未提供前 T1-15 未能評估"
+  },
+  "critical_values": {
+    "file": "critical_values_hospital_v1.json",
+    "status": "awaiting_hospital_list",
+    "note_zh": "HD-20261118-03：第 1 層閾值唯一來源"
+  },
+  "local_policies": [],
+  "forbidden_in_generic_layer": [
+    "MVAS",
+    "99(IV|ER)",
+    "^\\.?&",
+    "98[A-Z0-9]",
+    "(針劑)",
+    "HIS_LAB_MAP"
+  ]
+}

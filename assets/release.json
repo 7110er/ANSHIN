@@ -1,21 +1,22 @@
 {
  "schema": "site_release_v1",
- "label": "v10.0",
- "code_build_id": "fc9ff465f36b8d23c136d91836cdd536acc4a248e2c7e6ab1116c5cf5c84dc03",
- "frontend_build_id": "02e2224e6c7535b4e5a3df5a1e25fab183d801e0a447fc888bac398961e67e53",
- "code_gs_sha256": "e6ddcc1ccc98f2f4c720d2f7dd8a6df67a0f6389d2c4809d12a0e041970745be",
+ "label": "v11.2",
+ "code_build_id": "4e72a5df8d74b5161cd7d43b44c5ebfc5abf0bb9542eeb54c6b2bc007c4f6091",
+ "frontend_build_id": "bb279ccd9b13751e347b18c6412e00f3de04f9d6ca8ad7851663e6ff173e4601",
+ "code_gs_sha256": "f4eb46e36c0125c0775a125884c78de3c32f739492409d7d239906a150487508",
  "rules": {
-  "BUILD_FINGERPRINT.json": "4ca23a033019ba06a85db8b7f790707f3b0c68ad2acf6a6ec3a72a27381a741e",
-  "runtime_manifest_v1.json": "2aa2e3716998a35c70b713175801e27ea34984826aafa0cffe6ebe29a3d57366"
+  "BUILD_FINGERPRINT.json": "c53c4fec2d9b205d8a0c2c02609ecca1a1abde4e2153fa2b1137c0e33cd356ef",
+  "runtime_manifest_v1.json": "c34cf8f25540c44067bcbeef35cc61f9cc2535323fd30bbfcc0dd83526b4e7cf"
  },
  "note_zh": "網站登入後以後端「attest」實讀之值逐欄比對本檔；任一不符即顯示紅色橫幅，結果只供測試。",
+ "site_profile_sha256": "3edaaf75d7182443dfe2e8defe32f5bc323dbd0ac3b2ffc00fd05ee734863213",
  "pack": {
-  "file": "assets/pack_b8d06f54e9509277.bin",
-  "kid": "b8d06f54e9509277",
-  "sha_cipher": "b8d06f54e9509277f1de5ae6742e921d5101141351c909ab855730318693383a",
-  "sha_plain": "b9d548cd9ecf64ebffc3c8b3fc4233a6fff5045df51479389da5ea087ae27e58",
-  "bytes": 4817094,
-  "plain_bytes": 41805177,
-  "files": 230
+  "file": "assets/pack_60211eb02da24ddd.bin",
+  "kid": "60211eb02da24ddd",
+  "sha_cipher": "60211eb02da24ddd2c5fd736e338971c5d4dc6e88cbb0d4bb89a5d72a0f17772",
+  "sha_plain": "f2500105e66531602678955f767bf143b91cefd507f7952502825b0556f268c7",
+  "bytes": 4863111,
+  "plain_bytes": 42024817,
+  "files": 236
  }
 }
