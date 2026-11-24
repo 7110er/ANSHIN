@@ -69,7 +69,7 @@
     <div class="assess">
       <section class="panel" id="hisPanel" aria-labelledby="hisH">
         <h2 id="hisH" class="h3">HIS 帶入（選用）</h2>
-        <p class="muted">在 MVAS 按「安心桃選擷取」書籤，資料會自動送到本頁；或貼上交換碼。帶入後每欄標示「HIS」，可再修改。病人資料只留在本電腦，不上傳。</p>
+        <p class="muted">在院內 <span id="hisSysName">HIS</span> 按「安心桃選擷取」書籤，資料會自動送到本頁；或貼上交換碼。帶入後每欄標示「HIS」，可再修改。病人資料只留在本電腦，不上傳。</p>
         <label class="sr-only" for="hisCode">HIS 交換碼</label><textarea id="hisCode" rows="2" spellcheck="false" placeholder="貼上 HIS 交換碼"></textarea>
         <div class="row-actions"><button type="button" class="btn" id="btnHisPaste">讀入交換碼</button><button type="button" class="btn" id="btnWardRun" hidden>整病房分析</button></div>
         <div id="hisMsg" class="muted" role="status" aria-live="polite"></div>
@@ -104,8 +104,25 @@
             <label class="field"><span>白蛋白</span><input data-lab="alb" type="number" step="0.1"></label>
             <label class="field"><span>最低 SBP</span><input data-lab="sbp_min" type="number" step="1"></label>
             <label class="field"><span>最低 HR</span><input data-lab="hr_min" type="number" step="1"></label>
-            <label class="field"><span>檢驗幾天前</span><input data-lab="lab_days_ago" type="number" step="1"></label>
+            <label class="field"><span>檢驗幾天前（無逐項時間時用）</span><input data-lab="lab_days_ago" type="number" step="1"></label>
           </div>
+          <details class="more">
+            <summary>其他檢驗與趨勢（選填；由 HIS 帶入時自動填寫並記錄各項時間）</summary>
+            <div class="grid g4">
+              <label class="field"><span>指尖血糖 72 小時最低 mg/dL</span><input data-lab="poct_glu_min" type="number" step="1"></label>
+              <label class="field"><span>指尖血糖最低值幾小時前</span><input data-lab="poct_glu_min_h_ago" type="number" step="1"></label>
+              <label class="field"><span>WBC ×10³/µL</span><input data-lab="WBC" type="number" step="0.1"></label>
+              <label class="field"><span>ANC ×10⁹/L</span><input data-lab="ANC" type="number" step="0.01"></label>
+              <label class="field"><span>最近 CBC 幾天前</span><input data-lab="last_cbc_days_ago" type="number" step="0.1"></label>
+              <label class="field"><span>HbA1c %</span><input data-lab="hba1c" type="number" step="0.1"></label>
+              <label class="field"><span>TBil mg/dL</span><input data-lab="tbil" type="number" step="0.1"></label>
+              <label class="field"><span>最高體溫 ℃</span><input data-lab="temp_max" type="number" step="0.1"></label>
+              <label class="field"><span>SCr 基線 mg/dL</span><input data-lab="scr_baseline" type="number" step="0.01"></label>
+              <label class="field"><span>SCr 基線幾小時前</span><input data-lab="scr_baseline_hours_ago" type="number" step="1"></label>
+              <label class="field"><span>K 異常已持續幾天</span><input data-lab="k_abnormal_since_days" type="number" step="0.1"></label>
+              <label class="field"><span>Na 異常已持續幾天</span><input data-lab="na_abnormal_since_days" type="number" step="0.1"></label>
+            </div>
+          </details>
           <details class="more">
             <summary>危急值影子觀察欄（選填；只記錄、不出卡，待院內核准）</summary>
             <div class="grid g4">
