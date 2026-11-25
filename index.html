@@ -124,6 +124,19 @@
             </div>
           </details>
           <details class="more">
+            <summary>藥物濃度、24 小時變化與停用醫令（v11.3；HIS 帶入時自動填）</summary>
+            <div class="grid g4">
+              <label class="field"><span>Vancomycin 谷底 mg/L</span><input data-lab="lv_vanco" type="number" step="0.1"></label>
+              <label class="field"><span>Valproate mcg/mL</span><input data-lab="lv_vpa" type="number" step="0.1"></label>
+              <label class="field"><span>Voriconazole 谷底 mg/L</span><input data-lab="lv_voriconazole" type="number" step="0.1"></label>
+              <label class="field"><span>Na 24 小時變化 mmol/L</span><input data-lab="na_delta_24h" type="number" step="0.1"></label>
+              <label class="field"><span>Na 變化間隔（小時）</span><input data-lab="na_delta_window_h" type="number" step="0.1"></label>
+              <label class="field"><span>Hb 48 小時降幅 g/dL</span><input data-lab="hb_drop_48h" type="number" step="0.1"></label>
+              <label class="field"><span>Hb 降幅間隔（小時）</span><input data-lab="hb_drop_window_h" type="number" step="0.1"></label>
+            </div>
+            <label class="field"><span>72 小時內停用之醫令（每行一筆；供抗凝銜接判讀）</span><textarea id="f_stopped" rows="3"></textarea></label>
+          </details>
+          <details class="more">
             <summary>危急值影子觀察欄（選填；只記錄、不出卡，待院內核准）</summary>
             <div class="grid g4">
               <label class="field"><span>INR</span><input data-lab="inr" type="number" step="0.1"></label>

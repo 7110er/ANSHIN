@@ -146,13 +146,21 @@
         "key": "lv_phenytoin_total",
         "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
       },
+      "Van Thou": {
+        "key": "lv_vanco",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析；藥物濃度組）；v11.3 起 V113_TDM_HIGH 消費"
+      },
+      "Depakin": {
+        "key": "lv_vpa",
+        "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析；藥物濃度組）；v11.3 起 V113_TDM_HIGH 消費；單位 mcg/mL【未經查證：待檢驗科確認】"
+      },
       "ANC_per_ul": {
         "key": "anc_per_ul",
         "source_zh": "MVAS 檢驗代碼（2026-11-23 院內頁面結構分析）"
       }
     },
     "lab_capture_v1": {
-      "bookmarklet": "mvas_capture_v1.1.0",
+      "bookmarklet": "mvas_capture_v1.2.0",
       "vital_capture_v1": { "source_zh": "MVAS 生命徵象 TPR 繪圖資料（SPValue／PLValue／TPValue；日期列＋分鐘；2026-11-23 院內頁面結構分析）", "window_h": 72, "mapping_zh": "SPValue→sbp、PLValue→hr、TPValue（0.1°C）→temp【未經查證：由數值範圍推定，待護理部確認】", "weight": "not_captured" },
       "groups": [
         "生化",
@@ -161,7 +169,7 @@
       ],
       "time_basis_zh": "簽收日（民國 yyyMMddHHmm）【未經查證：簽收時間≠採檢時間】",
       "unit_assumptions_zh": "各項單位未於頁面標示，沿用本院常規單位【未經查證】；以 10 床逐欄比對驗證",
-      "not_consumed_zh": "Van Thou、Depakin、Ketone、Carba 目前無規則消費，擷取但不轉入"
+      "not_consumed_zh": "Ketone、Carba 目前無規則消費，擷取但不轉入（Van Thou、Depakin 自 v11.3 起轉入）"
     }
   },
   "reference_ranges": {

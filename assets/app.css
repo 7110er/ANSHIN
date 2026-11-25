@@ -255,3 +255,10 @@ details.demoted > summary { min-height: 48px; display: flex; align-items: center
 .src-his { border-left: 4px solid #2f6f8f !important; background-image: linear-gradient(90deg, rgba(47,111,143,.08), transparent 40%); }
 .src-manual { border-left: 4px dashed #8a5a00 !important; }
 #hisPanel textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 14px; }
+/* v11.3 */
+.sys-error { border: 3px solid #a10f0f; background: #fdecec; color: #5c0606; border-radius: var(--r); padding: 14px 16px; margin-bottom: 12px; }
+.data-status { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border: 1px solid #b9c6cf; background: #f4f7f9; border-radius: var(--r); padding: 10px 14px; margin-bottom: 12px; color: #1c2b36; }
+.data-status .ds-item { padding: 2px 8px; border-radius: 4px; background: #fff; border: 1px solid #c9d3da; }
+.data-status .ds-miss { background: #fff4e5; border-color: #b45309; color: #6b3203; font-weight: 600; }
+.data-status .ds-note { flex-basis: 100%; color: #6b3203; }
+.merged-note { color: #37474f; font-size: .95em; }

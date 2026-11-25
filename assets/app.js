@@ -8,7 +8,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 const live = (t) => { const el = $('#live'); el.textContent = ''; setTimeout(() => { el.textContent = t; }, 30); };
 const store = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }, del(k) { try { sessionStorage.removeItem(k); } catch (e) {} } };
 // v9.6：前端建置識別＝本檔將此行引號內值換為 64 個 0 後之 SHA-256（build_v96.py 寫入）
-const FRONT_BUILD_ID = 'bb279ccd9b13751e347b18c6412e00f3de04f9d6ca8ad7851663e6ff173e4601';
+const FRONT_BUILD_ID = '4f7a2fb096dc3d7e8c6c20fc1d0090ace762dac8ef3306d1e35c816c6533639e';
 const S = { attest: null, release: null, cfg: null, token: null, session: null, me: null, reauth: null, view: 'board', parse: null, result: null, board: null, draft: {} };
 // ── v9.2 分頁間共享會話憑證（只在同一瀏覽器、同網站、且至少一個已登入分頁仍開著時生效）
 const SESS_CH = (() => { try { return new BroadcastChannel('anshin_v9_sess_share'); } catch (e) { return null; } })();
@@ -80,8 +80,13 @@ async function ensureEngine() {
 function engCtx() { return { perm: ENG.info.perm, role_code: ENG.info.role_code, unit: ENG.info.unit, settings: ENG.info.settings }; }
 async function engineParse(lines) { const e = await ensureEngine(); return e.ok ? engCall({ cmd: 'parse', payload: { order_lines: lines }, ctx: engCtx() }).then((r) => Object.assign({ ok: r.ok !== false }, r)) : api('parse', { order_lines: lines }); }
 // 本機分析＋伺服器記錄；本機引擎不可用時改用伺服器分析（結果相同、較慢）
-async function engineCompute(d) {
+// v11.3 B3：主檔／引擎系統錯誤 → 終止 Worker、重新初始化一次再試；仍失敗則回傳系統錯誤（不出卡）
+function engReset() { try { if (ENG.w) ENG.w.terminate(); } catch (e) {} ENG.w = null; ENG.ready = null; }
+const SYS_ERR = /^(IDENTITY_UNAVAILABLE|ENGINE_ERROR|ENGINE_NOT_READY)$/;
+async function engineCompute(d, _retried) {
   const out = await engCall({ cmd: 'analyze', payload: d, ctx: engCtx() });
+  if (out && out.ok === false && SYS_ERR.test(String(out.error_code || '')) && !_retried) { engReset(); const e = await ensureEngine(); if (e.ok) return engineCompute(d, true); }
+  if (out && out.ok === false && SYS_ERR.test(String(out.error_code || ''))) out.system_error = true;
   if (!out || !out.ok) return { r: out || { ok: false, error_zh: '本機引擎無回應' } };
   const er = out.er;
   return { r: Object.assign({ ok: true, engine_site: 'browser' }, er), rec: { alias: er.alias, unit: er.unit, today: er.today, review: er.review, demoted: er.demoted || [], pending_cards: er.pending_cards || [],
@@ -92,9 +97,12 @@ async function engineAnalyze(d) {
   const e = await ensureEngine();
   if (!e.ok) { const r = await api('analyze', d); if (r.ok) r.engine_site = 'server'; return r; }
   const o = await engineCompute(d); if (!o.rec) return o.r;
-  o.rec.req_id = o.rec.req_id || rid(); const r = o.r, rec = await api('record_result', o.rec);
-  if (rec.ok) { r.encounter_id = rec.encounter_id; r.case_key = rec.case_key; r.persisted = rec.persisted; r.persist_error_zh = rec.persist_error_zh; r.events_persist_error_zh = rec.events_persist_error_zh; }
-  else { r.persisted = false; r.persist_error_zh = '評估結果已產生，但紀錄未保存：' + (rec.error_zh || '後端未回應'); }
+  // v11.3 D1：先回傳結果顯示，紀錄寫回於背景進行（結果不等待寫回）；寫回結果以 r.persistP 回報
+  o.rec.req_id = o.rec.req_id || rid(); const r = o.r; r.persisted = null;
+  r.persistP = api('record_result', o.rec).then((rec) => {
+    if (rec.ok) { r.encounter_id = rec.encounter_id; r.case_key = rec.case_key; r.persisted = rec.persisted; r.persist_error_zh = rec.persist_error_zh; r.events_persist_error_zh = rec.events_persist_error_zh; }
+    else { r.persisted = false; r.persist_error_zh = '評估結果已產生，但紀錄未保存：' + (rec.error_zh || '後端未回應'); }
+    return r; }, () => { r.persisted = false; r.persist_error_zh = '評估結果已產生，但紀錄未保存：後端未回應'; return r; });
   return r;
 }
 async function loadRelease() { try { const r = await fetch('assets/release.json', { cache: 'no-store' }); S.release = r.ok ? await r.json() : null; } catch (e) { S.release = null; } try { await loadSite(); } catch (e2) {} }
@@ -316,7 +324,8 @@ function collect() {
   const labs = {}, labs_age_h = {}; $$('[data-lab]').forEach((el) => { if (el.value !== '') { labs[el.dataset.lab] = el.value; if (el.dataset.ageH !== undefined && el.dataset.ageH !== '' && el.dataset.src === 'his') labs_age_h[el.dataset.lab === 'scr' ? 'scr' : el.dataset.lab] = Number(el.dataset.ageH); } });
   if ($('#f_scr').dataset.src === 'his' && $('#f_scr').dataset.ageH) labs_age_h.scr = Number($('#f_scr').dataset.ageH);
   const flags = {}; $$('[data-flag]').forEach((el) => { if (el.checked) flags[el.dataset.flag] = true; });
-  return { alias: v('#f_alias'), unit: v('#f_unit'), admission_day: v('#f_adm'), icd: v('#f_icd'), labs, labs_age_h, flags, order_lines: linesOf(),
+  const stopped = ($('#f_stopped') ? $('#f_stopped').value : '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean).slice(0, 40);
+  return { alias: v('#f_alias'), unit: v('#f_unit'), admission_day: v('#f_adm'), icd: v('#f_icd'), labs, labs_age_h, flags, order_lines: linesOf(), stopped_lines_v113: stopped,
            patient: { age: v('#f_age'), sex: v('#f_sex'), weight_kg: v('#f_wt'), scr_mg_dl: v('#f_scr'), scr_days_ago: v('#f_scr_ago'), dialysis: $('#f_dialysis').checked } };
 }
 function msg(t, err) { const m = $('#assessMsg'); m.textContent = t || ''; m.classList.toggle('err', !!err); if (t) live(t); }
@@ -381,11 +390,13 @@ async function analyze(e) {
   const tick = setInterval(() => msg(`分析中…已 ${Math.round((Date.now() - t0) / 1000)} 秒。逐行確認表可先檢視；結果回來後自動展開。`), 1000);
   const r = await engineAnalyze(d);
   clearInterval(tick); btn.disabled = false;
-  if (!r.ok) { msg(r.error_zh, true); return; }
+  if (!r.ok) { msg(r.error_zh, true); if (r.system_error) { S.result = null; $('#result').innerHTML = `<div class="sys-error" role="alert"><b>系統錯誤：本次結果無效，未輸出任何建議。</b><p>${esc(r.error_zh)}</p><p>請重新整理頁面後再分析；仍失敗請回報維護者。</p></div>`; } return; }
   S.result = r; const sec = (n) => (n == null ? '—' : (n / 1000).toFixed(1));
   const tm = r.engine_site === 'browser' ? `（本次 ${sec(Date.now() - t0)} 秒：本機判讀 ${sec(r.engine_ms)}）` : (r.timing_v99 ? `（本次 ${sec(Date.now() - t0)} 秒：伺服器分析${ENG.fallback_zh ? '，' + ENG.fallback_zh : ''}；後端 ${sec(r.server_ms)}）` : '');
-  msg(`完成：今日須處理 ${r.today.length} 項${r.unevaluated.n ? `；未評估 ${r.unevaluated.n} 行` : ''}。${tm}${r.persist_error_zh ? '　' + r.persist_error_zh : ''}${r.events_persist_error_zh ? '　' + r.events_persist_error_zh : ''}`, !!r.persist_error_zh);
+  const done = () => msg(`完成：今日須處理 ${r.today.length} 項${r.unevaluated.n ? `；未評估 ${r.unevaluated.n} 行` : ''}。${tm}${r.persisted === null ? '　紀錄寫回中…' : ''}${r.persist_error_zh ? '　' + r.persist_error_zh : ''}${r.events_persist_error_zh ? '　' + r.events_persist_error_zh : ''}`, !!r.persist_error_zh);
+  done();
   renderResult();
+  if (r.persistP) r.persistP.then(() => { if (S.result !== r) return; done(); const dz = $('#result .disclaimer'); if (dz && r.persisted === false) dz.textContent = r.disclaimer_zh + '　' + r.persist_error_zh; });
   // F83：完成即見結果——收合逐行確認表，捲至結果並移焦點
   const cf = $('#confirmWrap'); if (cf && S.parse) { cf.open = false; $('#confirmSum').textContent = `逐行確認表（${S.parse.rows.length} 行；已辨識 ${S.parse.counts.resolved}）`; }
   const rs = $('#result'); rs.setAttribute('tabindex', '-1');
@@ -396,14 +407,14 @@ const ROUTE_CODE_ZH = { oral: '口服', intravenous: '靜脈', intramuscular: '�
 function fieldZh(g) { const k = String(g.field || ''); if (g.field_zh && /[一-鿿]/.test(g.field_zh)) return g.field_zh; if (FIELD_ZH[k]) return FIELD_ZH[k]; const f = k.replace(/^fact_/, ''); return FACT_ZH[f] || FIELD_ZH[f] || '其他欄位'; }
 const SEV_ZH = { critical: '高風險', act_today: '今日處理', review: '本次檢視', info: '資訊' };
 function cardHtml(x, i) {
-  const sub = (x.sub_items || []).length ? `<details><summary>另含 ${x.sub_items.length} 項相關問題</summary><ul>${x.sub_items.map((s) => `<li>${esc((s.drugs || []).join('、'))}：${esc(s.basis_zh || '')}${s.action_zh ? '；' + esc(s.action_zh) : ''}</li>`).join('')}</ul></details>` : '';
+  const sub = (x.sub_items || []).length ? `<details${x.rule_id && /^V113_PENDING/.test(x.rule_id) ? ' open' : ''}><summary>${x.merged_v113 ? '已合併 ' + x.sub_items.length + ' 項同類問題（展開逐項）' : '另含 ' + x.sub_items.length + ' 項相關問題'}</summary><ul>${x.sub_items.map((s) => `<li>${esc((s.drugs || []).join('、'))}：${esc(s.basis_zh || '')}${s.action_zh ? '；' + esc(s.action_zh) : ''}</li>`).join('')}</ul></details>` : '';
   const K = x.contract_v110 || {}, evz = { formal_source: '依據：已登錄正式來源', pending_source: '依據：正式來源待登錄（不作為唯一臨床依據）', not_indexed: '依據：未建立索引' }[K.evidence_status] || '';
   const facts = (K.triggering_facts || []).filter((f) => f.type === 'lab').map((f) => `${f.key} ${f.value}`).join('、');
   const src = x.source_zh || evz ? `<details><summary>依據來源${K.evidence_status === 'pending_source' ? '（待登錄）' : ''}</summary>${x.source_zh ? `<p>${esc(x.source_zh)}</p>` : ''}${evz ? `<p>${esc(evz)}</p>` : ''}${facts ? `<p>觸發檢驗值：${esc(facts)}</p>` : ''}${K.source_alignment ? `<p class="msg">${esc(K.source_alignment.source)}：${esc(K.source_alignment.note_zh)}</p>` : ''}<p class="muted">${esc(x.adjudication_zh)}</p></details>` : '';
   const teach = (S.me.perm === 'teacher' || S.me.perm === 'learner') && x.teaching ? `<details><summary>教學對應：${esc((x.teaching.epa || []).map((e) => e.id + ' ' + e.title_zh).join('、'))}</summary><ol>${(x.teaching.questions || []).map((q) => `<li>${esc(q.q_zh)}<div class="muted">${esc(q.answer_zh)}</div></li>`).join('')}</ol></details>` : '';
   return `<li class="card sev-${esc(x.severity_class)}">
     <div class="card-top"><span class="card-n">${i + 1}</span><span class="card-title">${esc(x.title_zh)}</span>
-      <span class="badges"><span class="badge sev">${esc(SEV_ZH[x.severity_class] || x.severity_class)}</span><span class="badge ev">${esc(x.evidence)}</span>${x.tag_zh ? `<span class="badge">${esc(x.tag_zh)}</span>` : ''}</span></div>
+      <span class="badges"><span class="badge sev">${esc(SEV_ZH[x.severity_class] || x.severity_class)}</span>${x.time_tier_zh_v113 && x.severity_class !== 'review' ? `<span class="badge">時限：${esc(x.time_tier_zh_v113)}</span>` : ''}<span class="badge ev">${esc(x.evidence)}</span>${x.tag_zh ? `<span class="badge">${esc(x.tag_zh)}</span>` : ''}</span></div>
     <p class="card-why">${esc(x.why_zh)}</p>
     <p class="card-act">${esc(x.action_zh)} <span class="owner">｜${esc(x.owner_zh)}｜${esc(x.when_zh)}</span></p>
     ${sub}${src}${teach}
@@ -427,7 +438,9 @@ function renderResult() {
   let h = '';
   if (r.learner_cmp) h += `<div class="panel" style="margin-bottom:12px"><h2>作答比對</h2><p>找到 <b>${r.learner_cmp.found.length}</b>／${r.learner_cmp.today_total}；漏列 ${r.learner_cmp.missed.length}；多列 ${r.learner_cmp.extra.length}${r.learner_cmp.extra.length ? '（' + esc(r.learner_cmp.extra.join('、')) + '）' : ''}</p><p class="muted" id="cmpNote">${esc(r.learner_cmp.reference_zh || '比對對象為系統今日卡，系統結果為比較對象，非標準答案')}；「多列」不代表判斷錯誤，請與教師討論。</p></div>`;
   if (S.attest && !S.attest.ok) h += `<p class="attest-inline" role="note">部署版本未經驗證（${esc(S.attest.reasons.join('；'))}）：本結果只供測試。</p>`;
-  if (urg) h += `<div class="urgency ${esc(urg.tier)}" role="status"><span>溝通急迫度：${esc(urg.zh)}</span><small>${esc(urg.basis_zh || '')}</small></div>`;
+  const DS = r.data_status_v113;   // v11.3 B2／E1：資料狀態列（缺項明示；缺項之規則族列為未評估，不視為正常）
+  if (DS) h += `<div class="data-status" role="status" aria-label="資料狀態">${DS.fields.map((f) => `<span class="ds-item${f.ok ? '' : ' ds-miss'}">${esc(f.zh)} ${f.ok ? esc(f.val || '✓') : '✗ 缺'}</span>`).join('')}${U.n ? `<span class="ds-item ds-miss">未解析 ${U.n} 行</span>` : ''}${(DS.not_evaluated || []).map((x) => `<span class="ds-note">本次未評估：${esc(x.zh)}</span>`).join('')}</div>`;
+  if (urg) h += `<div class="urgency ${esc(urg.tier)}" role="status"><span>溝通急迫度：${esc(urg.zh)}</span><small>${esc(urg.basis_zh || '')}${r.priority_v113 ? '　｜處理時限：' + esc(r.priority_v113.zh) + (r.priority_v113.acute_facts.length ? '（' + esc(r.priority_v113.acute_facts.join('、')) + '）' : '') : ''}</small></div>`;
   const MI = (((r.tier1_shadow || {}).missing_inputs_v109 || {}).ask_user) || [];
   if (MI.length) h += `<div class="panel" style="margin-bottom:12px"><h2>補這些檢驗值，可多判定 ${MI.reduce((n, x) => n + x.unlocks.length, 0)} 項高風險情境</h2><ul>${MI.map((x) => `<li>${esc(x.input)}</li>`).join('')}</ul><p class="muted">未提供時，相關情境列為無法評估，不視為正常。</p></div>`;
   if (U.n) h += `<div class="unevaluated" role="alert"><b>未評估 ${U.n} 行：以下醫囑沒有進入評估，今日清單不完整。</b><ul>${U.lines.map((x) => `<li><span class="code">${esc(x.raw)}</span>　${esc(x.reason_zh)}</li>`).join('')}</ul></div>`;
@@ -742,7 +755,8 @@ async function hisValidate(pkt) {
     if (!Array.isArray(p.orders) || p.orders.some((o) => typeof (o && o.raw) !== 'string')) return '交換包醫囑欄位不符';
     if (!Array.isArray(p.labs || [])) return '交換包檢驗欄位不符';
   }
-  const phi = phiScan(JSON.stringify(pkt.patients.map((p) => [p.bed, p.unit, p.icd, (p.orders || []).map((o) => o.raw)])));
+  const phi = phiScan(JSON.stringify(pkt.patients.map((p) => [p.bed, p.unit, p.icd, p.admission_day, (p.orders || []).map((o) => o.raw), (p.stopped_orders || []).map((o) => o.raw)])));
+  for (const p of pkt.patients) { if (p.age != null && !(Number(p.age) >= 0 && Number(p.age) <= 120)) return '交換包年齡欄不符'; if (p.weight_kg != null && !(Number(p.weight_kg) > 0 && Number(p.weight_kg) < 400)) return '交換包體重欄不符'; if (p.sex != null && p.sex !== '' && !/^[MF]$/.test(p.sex)) return '交換包性別欄不符'; }
   if (phi.length) return `交換包含可識別資料（${phi.join('、')}），已拒收`;
   return null;
 }
@@ -782,6 +796,10 @@ function hisToPayload(p) {
   const hbS = (series.Hb || []).filter((x) => !isNaN(x.h)).sort((a, b) => a.h - b.h);
   if (hbS.length >= 2) { const last = hbS[0], prior = hbS.filter((x) => x.h > last.h && x.h - last.h <= 48);
     if (prior.length) { const mx = prior.reduce((a, b) => (b.v > a.v ? b : a)); labs.hb_drop_48h = String(Math.round((mx.v - last.v) * 10) / 10); labs.hb_drop_window_h = String(mx.h - last.h); } }
+  // v11.3 A3（C3）：24 小時內 Na 最大變化（最近值－24 小時內最偏離之較早值）
+  const naS = (series.Na || []).filter((x) => !isNaN(x.h)).sort((a, b) => a.h - b.h);
+  if (naS.length >= 2) { const last = naS[0], prior = naS.filter((x) => x.h > last.h && x.h - last.h <= 24);
+    if (prior.length) { const ex = prior.reduce((a, b) => (Math.abs(last.v - b.v) > Math.abs(last.v - a.v) ? b : a)); labs.na_delta_24h = String(Math.round((last.v - ex.v) * 10) / 10); labs.na_delta_window_h = String(Math.round((ex.h - last.h) * 10) / 10); } }
   const cbcH = ['PLT', 'Hb', 'WBC'].map((k) => age[k]).filter((x) => x != null);
   if (cbcH.length) labs.last_cbc_days_ago = String(Math.round(Math.min(...cbcH) / 24 * 10) / 10);
   if (Object.keys(age).length) labs.lab_days_ago = String(Math.ceil(maxH / 24));
@@ -790,6 +808,7 @@ function hisToPayload(p) {
   return { alias: String(p.alias || (bed ? 'R-' + bed : '')).slice(0, 16), unit: String(p.unit || '').slice(0, 30), admission_day: p.admission_day != null ? String(p.admission_day) : '',
     icd: (p.icd || []).join(' '), labs, labs_age_h: Object.assign(age, scrH != null ? { scr: scrH } : {}), flags: {}, order_lines: (p.orders || []).map((o) => o.raw).filter((x) => x.trim()),
     order_flags_v2: (p.orders || []).map((o) => (o.flags || []).join(',')),
+    stopped_lines_v113: (p.stopped_orders || []).map((o) => o.raw).filter((x) => typeof x === 'string' && x.trim()).slice(0, 40),   // v11.3 A4（C7）：72 小時內停用醫令
     patient: { age: p.age != null ? String(p.age) : '', sex: p.sex || '', weight_kg: p.weight_kg != null ? String(p.weight_kg) : '',
       scr_mg_dl: scrV != null ? scrV : (p.scr_mg_dl != null ? String(p.scr_mg_dl) : ''), scr_days_ago: scrH != null ? String(Math.round(scrH / 24 * 10) / 10) : (p.scr_h_ago != null ? String(Math.ceil(Number(p.scr_h_ago) / 24)) : ''), dialysis: p.dialysis === true } };
 }
@@ -805,6 +824,7 @@ function hisFill(d) {
   set('#f_scr', d.patient.scr_mg_dl, (d.labs_age_h || {}).scr); set('#f_scr_ago', d.patient.scr_days_ago); $('#f_dialysis').checked = d.patient.dialysis; set('#f_icd', d.icd);
   $$('[data-lab]').forEach((el) => set(el, d.labs[el.dataset.lab], (d.labs_age_h || {})[el.dataset.lab]));
   $('#f_orders').value = d.order_lines.join('\n'); $('#f_orders').classList.add('src-his'); S.parse = null;
+  if ($('#f_stopped')) { $('#f_stopped').value = (d.stopped_lines_v113 || []).join('\n'); $('#f_stopped').classList.toggle('src-his', !!(d.stopped_lines_v113 || []).length); }
 }
 document.addEventListener('input', (e) => { if (e.target && e.target.dataset && e.target.dataset.src === 'his') { e.target.dataset.src = 'manual'; e.target.dataset.ageH = ''; e.target.title = '人工修改'; e.target.classList.remove('src-his'); e.target.classList.add('src-manual'); } });
 async function hisAccept(pkt) {
@@ -816,13 +836,14 @@ async function hisAccept(pkt) {
   return { ok: true, n: pkt.patients.length };
 }
 const SEV_RANK = { critical: 4, act_today: 3, review: 2, info: 1 };
-function wardScore(r) { if (!r || !r.ok) return -1; const ue = r.unevaluated && r.unevaluated.n ? r.unevaluated.n : 0; const top = Math.max(0, ...r.today.map((x) => SEV_RANK[x.severity_class] || 0)); return r.today.length * 1e6 + (r.review || []).length * 1e3 + Math.min(ue, 99) * 10 + top; }   // v10.4：今日卡數 → 檢視卡數 → 未能評估數（藍圖 v22.0 §4）
+const PRI_RANK = { same_day: 3, contact_72hr: 2, next_visit: 1 };
+function wardScore(r) { if (!r || !r.ok) return -1; const pr = r.priority_v113 ? (PRI_RANK[r.priority_v113.tier] || 0) * 1e9 : 0; const ue = r.unevaluated && r.unevaluated.n ? r.unevaluated.n : 0; const top = Math.max(0, ...r.today.map((x) => SEV_RANK[x.severity_class] || 0)); return pr + r.today.length * 1e6 + (r.review || []).length * 1e3 + Math.min(ue, 99) * 10 + top; }   // v10.4：今日卡數 → 檢視卡數 → 未能評估數（藍圖 v22.0 §4）
 function renderWard() {
   const rows = S.ward.map((w, i) => ({ w, i })).sort((a, b) => wardScore(b.w.r) - wardScore(a.w.r));
-  $('#wardQueue').innerHTML = `<div class="tbl-wrap"><table><caption>病房佇列（已分析者依風險排序：最高嚴重度 → 今日卡數 → 未評估行數）</caption>
-    <thead><tr><th scope="col">化名</th><th scope="col">醫囑行</th><th scope="col">今日卡</th><th scope="col">最高</th><th scope="col">未評估</th><th scope="col">動作</th></tr></thead><tbody>${rows.map(({ w, i }) => {
+  $('#wardQueue').innerHTML = `<div class="tbl-wrap"><table><caption>病房佇列（已分析者依風險排序：處理時限 → 今日卡數 → 檢視卡數 → 未評估行數）</caption>
+    <thead><tr><th scope="col">化名</th><th scope="col">醫囑行</th><th scope="col">處理時限</th><th scope="col">今日卡</th><th scope="col">最高</th><th scope="col">未評估</th><th scope="col">動作</th></tr></thead><tbody>${rows.map(({ w, i }) => {
       const r = w.r, top = r && r.ok ? (r.today[0] ? (SEV_ZH[r.today.slice().sort((a, b) => (SEV_RANK[b.severity_class] || 0) - (SEV_RANK[a.severity_class] || 0))[0].severity_class] || '') : '無') : (r ? '失敗' : '未分析');
-      return `<tr><td>${esc(w.d.alias)}</td><td>${w.d.order_lines.length}</td><td>${r && r.ok ? r.today.length : '—'}</td><td>${esc(top)}</td><td>${r && r.ok && r.unevaluated ? r.unevaluated.n : '—'}</td>
+      return `<tr><td>${esc(w.d.alias)}</td><td>${w.d.order_lines.length}</td><td>${r && r.ok && r.priority_v113 ? esc(r.priority_v113.zh) : '—'}</td><td>${r && r.ok ? r.today.length : '—'}</td><td>${esc(top)}</td><td>${r && r.ok && r.unevaluated ? r.unevaluated.n : '—'}</td>
         <td><button type="button" class="btn" data-ward="${i}">${r && r.ok ? '開啟結果' : '帶入表單'}</button></td></tr>`; }).join('')}</tbody></table></div>`;
 }
 $('#wardQueue').addEventListener('click', (e) => {
@@ -834,7 +855,10 @@ $('#btnWardRun').addEventListener('click', async () => {
   if (!e.ok) { m.textContent = '整病房分析需要本機引擎：' + (e.error_zh || '無法啟用'); m.classList.add('err'); return; }
   const btn = $('#btnWardRun'); btn.disabled = true; const t0 = Date.now();
   const recs = [];
-  for (let i = 0; i < S.ward.length; i++) { m.textContent = `本機判讀 ${i + 1}／${S.ward.length}…`; const o = await engineCompute(S.ward[i].d); S.ward[i].r = o.r; if (o.rec) recs.push({ i, rec: o.rec }); renderWard(); }
+  let sysErr = null;
+  for (let i = 0; i < S.ward.length; i++) { m.textContent = `本機判讀 ${i + 1}／${S.ward.length}…`; const o = await engineCompute(S.ward[i].d); S.ward[i].r = o.r; if (o.rec) recs.push({ i, rec: o.rec }); renderWard();
+    if (o.r && o.r.system_error) { sysErr = o.r.error_zh; break; } }   // v11.3 B3：系統錯誤即停止整病房判讀，不以錯誤結果排序
+  if (sysErr) { btn.disabled = false; m.textContent = '系統錯誤，整病房判讀已停止：' + sysErr; m.classList.add('err'); return; }
   const t1 = Date.now(); m.textContent = `判讀完成（${Math.round((t1 - t0) / 1000)} 秒），寫回紀錄中…`;
   for (let k = 0; k < recs.length; k += 20) {   // R14-12：每 20 床一次寫回
     const part = recs.slice(k, k + 20), rr = await api('record_results', { items: part.map((x) => { x.rec.req_id = x.rec.req_id || rid(); return x.rec; }) });
